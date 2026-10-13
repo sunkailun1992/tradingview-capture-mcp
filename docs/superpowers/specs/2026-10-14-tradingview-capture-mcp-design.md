@@ -41,10 +41,12 @@ TradingView 桌面版是 Electron 应用，页面里的图表有完整的数据�
 | `layout` | TradingView 布局 ID，用来在桌面版的多个标签页里选中目标页，必须唯一命中 |
 | `symbols` | 要采集的 TradingView 代码列表，例如 `BINANCE:BTCUSDT.P`，按给定顺序采 |
 | `timeframe` | 周期，例如 `1D`。当前周期不符时先切换，收尾时恢复 |
-| `outputDir` | 本批的输出目录。必须在本机配置的输出根目录之下，而且还不存在（续跑同一批除外） |
-| `requiredStudies` | 自检时要求必须存在的指标名（按子串匹配），可不传 |
+| `output_dir` | 本批的输出目录，必须是绝对路径；父目录已存在且在本机配置的输出根目录之下；目录本身必须还不存在（续跑同一批除外），由工具创建 |
+| `required_studies` | 自检时要求必须存在的指标名（按子串匹配），可不传 |
 | `viewport` | 截图用的视口宽、高和像素比；不传就用当前窗口 |
-| `readyTimeoutSec` | 单个品种最长等待就绪的秒数，默认 60 |
+| `ready_timeout_sec` | 单个品种最长等待就绪的秒数，默认 60 |
+
+MCP 工具名和参数名用 snake_case，输出文件里的 JSON 键用 camelCase。
 
 本机配置放在仓库外的 `~/.config/tradingview-capture-mcp/config.toml`（0600），只放和这台机器有关、和业务无关的项：桌面版路径、调试端口、输出根目录。
 
@@ -54,7 +56,7 @@ TradingView 桌面版是 Electron 应用，页面里的图表有完整的数据�
 |---|---|
 | `desktop.py` | 启动、发现和退出桌面版：带 `--remote-debugging-port` 启动，核对端口只监听 127.0.0.1，记下自己启动的 PID；退出只针对这个 PID，先正常退出，超时再按 PID 结束，从不按进程名结束进程。桌面版已经在普通模式下运行时报错停止，不关用户的程序 |
 | `cdp.py` | 最小 CDP 客户端：列出页面目标、按布局 ID 选页、`Runtime.evaluate`、`Emulation`（固定截图视口） |
-| `page/*.js` | 页面内的只读脚本，随版本固定：`identity`、`studies`、`series`、`graphics`（表格 / 标签 / 线 / 框）、`drawings`、`screenshot`、`switch`、`diagnose`。调用方不能传入任意脚本 |
+| `page/*.js` | 页面内的只读脚本，随版本固定：`alive`、`ready`、`switch`、`extract`（身份、指标、表格 / 标签 / 线 / 框、绘图、曲线，一次调用读完）、`screenshot`、`diagnose`。调用方不能传入任意脚本 |
 | `capture.py` | 批次流程：开工自检、逐品种切换并判断就绪、提取、写文件、收尾恢复 |
 | `store.py` | 写文件：0600、只新建（`O_EXCL`）、写完算 SHA256；批次锁；manifest |
 | `jobs.py` | 后台任务：采集在独立子进程里跑，进度写进批次目录的 `job.json`，调用方断开也不影响采集 |
@@ -65,16 +67,16 @@ TradingView 桌面版是 Electron 应用，页面里的图表有完整的数据�
 
 ### 4.1 开工（每批一次）
 
-1. 校验参数，拿批次锁，建 `outputDir`，写 `batch.json`（开工时间、参数、工具版本）。`symbols` 原样存档并算 SHA256。
+1. 校验参数，拿批次锁，建 `output_dir`，写 `batch.json`（开工时间、参数、工具版本）。`symbols` 原样存档并算 SHA256。
 2. 启动桌面版，等 CDP 就绪，核对监听地址，选中 `layout` 对应的页面，记下当前的品种和周期。
 3. 传了 `viewport` 就用 `Emulation.setDeviceMetricsOverride` 固定视口和像素比，让截图尺寸稳定。
-4. 自检：在第一个品种上完整提取一遍，检查身份可读、`requiredStudies` 都在、表格和标签集合能访问、曲线序列行数大于 0、截图是有效的 PNG。任何一项不过，整批停止，返回错误码 `TV_INTERNALS_CHANGED` 并附上失效点，不留半成品。
+4. 自检：在第一个品种上完整提取一遍，检查身份可读、`required_studies` 都在、表格和标签集合能访问、曲线序列行数大于 0、截图是有效的 PNG。任何一项不过，整批停止，返回错误码 `TV_INTERNALS_CHANGED` 并附上失效点，不留半成品。
 5. 记下桌面版版本。如果和输出根目录下最近一次成功批次的版本不同，在 manifest 里标 `desktopVersionChanged: true`。
 
 ### 4.2 逐品种
 
 1. **切换**：`setSymbol(code)`，核对周期。
-2. **判断就绪**：以下条件全部满足才往下走，超过 `readyTimeoutSec` 就记失败：
+2. **判断就绪**：以下条件全部满足才往下走，超过 `ready_timeout_sec` 就记失败：
    - 当前品种等于目标代码；
    - 主图最后一根 K 线的时间，和各指标序列的最后一根对得上；
    - 各指标计算完成，没有加载中或报错状态；
@@ -87,7 +89,7 @@ TradingView 桌面版是 Electron 应用，页面里的图表有完整的数据�
    - 表格：每个指标每张表 `[行][列]` 的原文，emoji、空格、`NaN` 都原样保留；
    - 标签：文字、K 线时间（由序号换算）、价位、朝向样式、颜色；
    - 线与框：端点的时间和价位；
-   - 绘图：类型、端点、各档位的系数和价位（例如斐波）；
+   - 绘图：类型、端点、各档位的系数（例如斐波）；斐波各档价位要等用真实斐波验证换算约定之后再输出；
    - 曲线：可见范围内每根 K 线、每条可见曲线的值，列名和原生 CSV 一致；
    - 截图：TradingView 渲染的 PNG。
 4. **写入** `raw/<代码安全名>/`：`image.png`、`chart.csv`、`data.json`、`capture.json`，格式见第 5 节。
@@ -100,7 +102,7 @@ TradingView 桌面版是 Electron 应用，页面里的图表有完整的数据�
 
 ### 4.4 续跑
 
-对同一个 `outputDir` 用 `retryFailed` 重跑，只处理失败的品种。每次尝试追加记录到 `attempts/`，已成功品种的文件不动。
+对已有批次调用 `capture_retry`（命令行 `capture --retry-failed`），只重跑失败和未完成的品种。每次尝试追加记录到 `attempts/`，已成功品种的文件不动。
 
 ## 5. 输出格式
 
@@ -126,16 +128,17 @@ TradingView 桌面版是 Electron 应用，页面里的图表有完整的数据�
 
 | MCP 工具 | 命令行 | 作用 |
 |---|---|---|
-| `capture_start` | `tradingview-capture capture` | 按第 2 节的参数开始一批，或对已有批次 `retryFailed`；立即返回任务 ID |
+| `capture_start` | `tradingview-capture capture` | 按第 2 节的参数开始一批，立即返回任务 ID |
+| `capture_retry` | `tradingview-capture capture --retry-failed` | 只重跑已有批次里失败和未完成的品种，立即返回任务 ID |
 | `capture_status` | `tradingview-capture status` | 进度：完成数 / 总数、当前品种、失败原因、版本是否变化 |
 | `batch_summary` | `tradingview-capture status --summary` | 一批的总览：每个品种的状态和文件 SHA256 |
 | `symbol_data` | `tradingview-capture read` | 读某个品种的 `data.json`，可以只取 `identity` / `tables` / `labels` / `lines` / `drawings`；要曲线值时从 `chart.csv` 取最近 N 根 |
-| `image_crop` | `tradingview-capture crop` | 按像素框从 `image.png` 裁图，返回图像内容，或另存为文件（0600） |
+| `image_crop` | `tradingview-capture crop` | 按像素框从 `image.png` 裁图。MCP 返回 PNG 图像内容；另存为文件只在命令行 `crop --out`（0600） |
 | `diagnose` | `tradingview-capture doctor` | 只读的兼容诊断：每条提取路径是否可用、失效点附近的字段名和数量、桌面版版本。不输出表格原文这类内容数据 |
 
 - 返回内容尽量紧凑：默认不返回逐 K 曲线，表格按行文本返回。
 - MCP 只走 stdio，不开网络端口。
-- 会写文件的只有 `capture_start` 和另存模式的 `image_crop`，而且只能写在输出根目录里。
+- 会写文件的只有 `capture_start`、`capture_retry` 和命令行的 `crop --out`，而且只能写在输出根目录里。
 
 ## 7. 错误码
 
@@ -151,6 +154,13 @@ TradingView 桌面版是 Electron 应用，页面里的图表有完整的数据�
 | `STUDY_MISSING` | 必需指标缺失 | 该品种失败，继续下一个 |
 | `OUTPUT_EXISTS` / `OUTPUT_OUTSIDE_ROOT` | 输出目录已存在，或不在输出根目录下 | 停止 |
 | `BATCH_LOCKED` | 另一个采集正在运行 | 停止 |
+| `TV_STARTUP_TIMEOUT` | 桌面版启动后调试端口迟迟不应答，或启动中途退出 | 停止 |
+| `PORT_IN_USE` | 调试端口已被别的程序占用 | 停止 |
+| `CDP_ERROR` | 与页面的 DevTools 通信失败，或页面脚本报错 | 该品种失败；开工阶段则停止 |
+| `INVALID_ARGUMENT` | 参数格式不对 | 停止，不启动桌面版 |
+| `CONFIG_INVALID` | 本机配置缺失、格式不对、可被他人写，或输出根目录不存在（例如外置盘没挂载） | 停止 |
+| `NOT_FOUND` | 要读的批次、品种或任务不存在；续跑时没有失败的品种 | 停止 |
+| `INTERNAL_ERROR` | 工具自身的意外错误；仍会写出 manifest | 停止 |
 
 ## 8. 桌面版升级与兼容修复
 

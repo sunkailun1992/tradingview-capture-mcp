@@ -218,7 +218,9 @@ TIMEFRAME_RE = re.compile(r"[1-9][0-9]{0,3}[SDWM]?|[DWM]")
 
 def check_layout(layout: str) -> str:
     if not isinstance(layout, str) or not LAYOUT_RE.fullmatch(layout):
-        raise CaptureError(INVALID_ARGUMENT, "layout must be 4-32 letters or digits", {"layout": str(layout)[:64]})
+        raise CaptureError(
+            INVALID_ARGUMENT, "layout must be 4-32 letters or digits", {"layout": str(layout)[:64]}
+        )
     return layout
 ```
 
@@ -235,7 +237,11 @@ def test_capture_error_carries_code_message_and_detail():
     exc = CaptureError(OUTPUT_EXISTS, "refusing to overwrite", {"path": "batch"})
     assert exc.code == "OUTPUT_EXISTS"
     assert str(exc) == "OUTPUT_EXISTS: refusing to overwrite"
-    assert exc.to_dict() == {"code": "OUTPUT_EXISTS", "message": "refusing to overwrite", "detail": {"path": "batch"}}
+    assert exc.to_dict() == {
+        "code": "OUTPUT_EXISTS",
+        "message": "refusing to overwrite",
+        "detail": {"path": "batch"},
+    }
 
 
 def test_detail_defaults_to_an_empty_dict():
@@ -330,8 +336,11 @@ def test_defaults_and_resolved_output_root(tmp_path):
     root = tmp_path / "out"
     root.mkdir()
     config = load_config(write(tmp_path / "c.toml", f'output_root = "{root}"\n'))
-    assert config == Config(app_path=Path("/Applications/TradingView.app"), debug_port=DEFAULT_DEBUG_PORT,
-                            output_root=root.resolve())
+    assert config == Config(
+        app_path=Path("/Applications/TradingView.app"),
+        debug_port=DEFAULT_DEBUG_PORT,
+        output_root=root.resolve(),
+    )
     assert config.app_binary == Path("/Applications/TradingView.app/Contents/MacOS/TradingView")
 
 
@@ -343,14 +352,17 @@ def test_reads_every_key(tmp_path):
     assert (config.app_path, config.debug_port) == (tmp_path / "TV.app", 9444)
 
 
-@pytest.mark.parametrize("body, needle", [
-    ("", "output_root is required"),
-    ('output_root = "{missing}"\n', "existing directory"),
-    ('output_root = "{root}"\ndebug_port = 80\n', "debug_port"),
-    ('output_root = "{root}"\ndebug_port = true\n', "debug_port"),
-    ('output_root = "{root}"\nextra = 1\n', "unknown config keys"),
-    ('output_root = [\n', "not valid TOML"),
-])
+@pytest.mark.parametrize(
+    "body, needle",
+    [
+        ("", "output_root is required"),
+        ('output_root = "{missing}"\n', "existing directory"),
+        ('output_root = "{root}"\ndebug_port = 80\n', "debug_port"),
+        ('output_root = "{root}"\ndebug_port = true\n', "debug_port"),
+        ('output_root = "{root}"\nextra = 1\n', "unknown config keys"),
+        ("output_root = [\n", "not valid TOML"),
+    ],
+)
 def test_rejects_invalid_config(tmp_path, body, needle):
     root = tmp_path / "out"
     root.mkdir()
@@ -429,12 +441,17 @@ def load_config(path: Path | None = None) -> Config:
         raise CaptureError(CONFIG_INVALID, f"config file not found: {path}", {"path": str(path)})
     mode = path.stat().st_mode & 0o777
     if mode & 0o022:
-        raise CaptureError(CONFIG_INVALID, "the config file must not be writable by group or others",
-                           {"path": str(path), "mode": oct(mode)})
+        raise CaptureError(
+            CONFIG_INVALID,
+            "the config file must not be writable by group or others",
+            {"path": str(path), "mode": oct(mode)},
+        )
     try:
         raw = tomllib.loads(path.read_text(encoding="utf-8"))
     except tomllib.TOMLDecodeError as exc:
-        raise CaptureError(CONFIG_INVALID, f"the config is not valid TOML: {exc}", {"path": str(path)}) from exc
+        raise CaptureError(
+            CONFIG_INVALID, f"the config is not valid TOML: {exc}", {"path": str(path)}
+        ) from exc
     unknown = sorted(set(raw) - KNOWN_KEYS)
     if unknown:
         raise CaptureError(CONFIG_INVALID, "unknown config keys", {"keys": unknown})
@@ -443,11 +460,16 @@ def load_config(path: Path | None = None) -> Config:
         raise CaptureError(CONFIG_INVALID, "output_root is required", {})
     root = Path(output_root).expanduser()
     if not root.is_dir():
-        raise CaptureError(CONFIG_INVALID, "output_root must be an existing directory (is the disk mounted?)",
-                           {"output_root": str(root)})
+        raise CaptureError(
+            CONFIG_INVALID,
+            "output_root must be an existing directory (is the disk mounted?)",
+            {"output_root": str(root)},
+        )
     port = raw.get("debug_port", DEFAULT_DEBUG_PORT)
     if not isinstance(port, int) or isinstance(port, bool) or not 1024 <= port <= 65535:
-        raise CaptureError(CONFIG_INVALID, "debug_port must be an integer between 1024 and 65535", {"debug_port": port})
+        raise CaptureError(
+            CONFIG_INVALID, "debug_port must be an integer between 1024 and 65535", {"debug_port": port}
+        )
     app = raw.get("app_path", str(DEFAULT_APP_PATH))
     if not isinstance(app, str) or not app:
         raise CaptureError(CONFIG_INVALID, "app_path must be a non-empty string", {})
@@ -555,7 +577,10 @@ def test_resolve_rejects_bad_paths(tmp_path, value):
 
 def test_resolve_accepts_paths_inside_the_root(tmp_path):
     (tmp_path / "day").mkdir()
-    assert resolve_inside_root(tmp_path, tmp_path / "day" / "capture") == (tmp_path / "day" / "capture").resolve()
+    assert (
+        resolve_inside_root(tmp_path, tmp_path / "day" / "capture")
+        == (tmp_path / "day" / "capture").resolve()
+    )
 
 
 def test_resolve_rejects_paths_outside_the_root(tmp_path):
@@ -635,7 +660,7 @@ def sha256_bytes(data: bytes) -> str:
 def _write_all(fd: int, data: bytes) -> None:
     view = memoryview(data)
     while view:
-        view = view[os.write(fd, view):]
+        view = view[os.write(fd, view) :]
     os.fsync(fd)
 
 
@@ -700,7 +725,9 @@ def resolve_inside_root(root: Path, value: str | Path) -> Path:
     resolved = parent / candidate.name
     real_root = root.resolve()
     if parent != real_root and real_root not in parent.parents:
-        raise CaptureError(OUTPUT_OUTSIDE_ROOT, "the path must be inside the output root", {"path": str(resolved)})
+        raise CaptureError(
+            OUTPUT_OUTSIDE_ROOT, "the path must be inside the output root", {"path": str(resolved)}
+        )
     if resolved.is_symlink():
         raise CaptureError(OUTPUT_OUTSIDE_ROOT, "the path must not be a symlink", {"path": str(resolved)})
     return resolved
@@ -826,7 +853,9 @@ def test_call_skips_events_and_returns_the_result(devtools):
 
 def test_evaluate_returns_the_value(devtools):
     url, replies = devtools
-    replies["Runtime.evaluate"] = lambda params: {"result": {"result": {"type": "object", "value": {"byValue": params["returnByValue"]}}}}
+    replies["Runtime.evaluate"] = lambda params: {
+        "result": {"result": {"type": "object", "value": {"byValue": params["returnByValue"]}}}
+    }
     with cdp.CdpSession(url) as session:
         assert session.evaluate("1") == {"byValue": True}
 
@@ -841,8 +870,15 @@ def test_evaluate_carries_large_values(devtools):
 
 def test_page_exceptions_become_cdp_errors(devtools):
     url, replies = devtools
-    replies["Runtime.evaluate"] = {"result": {"result": {}, "exceptionDetails": {
-        "text": "Uncaught", "exception": {"description": "TypeError: x is undefined\n    at <anonymous>:1:1"}}}}
+    replies["Runtime.evaluate"] = {
+        "result": {
+            "result": {},
+            "exceptionDetails": {
+                "text": "Uncaught",
+                "exception": {"description": "TypeError: x is undefined\n    at <anonymous>:1:1"},
+            },
+        }
+    }
     with cdp.CdpSession(url) as session, pytest.raises(CaptureError) as err:
         session.evaluate("x.y")
     assert (err.value.code, err.value.message) == ("CDP_ERROR", "TypeError: x is undefined")
@@ -850,8 +886,15 @@ def test_page_exceptions_become_cdp_errors(devtools):
 
 def test_the_internals_marker_has_its_own_code(devtools):
     url, replies = devtools
-    replies["Runtime.evaluate"] = {"result": {"result": {}, "exceptionDetails": {
-        "text": "Uncaught", "exception": {"description": "Error: TV_INTERNALS_CHANGED: window.TradingViewApi is missing"}}}}
+    replies["Runtime.evaluate"] = {
+        "result": {
+            "result": {},
+            "exceptionDetails": {
+                "text": "Uncaught",
+                "exception": {"description": "Error: TV_INTERNALS_CHANGED: window.TradingViewApi is missing"},
+            },
+        }
+    }
     with cdp.CdpSession(url) as session, pytest.raises(CaptureError) as err:
         session.evaluate("x")
     assert err.value.code == "TV_INTERNALS_CHANGED"
@@ -948,7 +991,9 @@ def select_chart_page(targets: list[dict[str, Any]], layout: str) -> dict[str, A
     if not pages:
         raise CaptureError(LAYOUT_NOT_FOUND, "no TradingView tab shows this layout", {"layout": layout})
     if len(pages) > 1:
-        raise CaptureError(LAYOUT_NOT_UNIQUE, "more than one tab shows this layout", {"layout": layout, "tabs": len(pages)})
+        raise CaptureError(
+            LAYOUT_NOT_UNIQUE, "more than one tab shows this layout", {"layout": layout, "tabs": len(pages)}
+        )
     return pages[0]
 
 
@@ -958,13 +1003,21 @@ class CdpSession:
     def __init__(self, ws_url: str, *, open_timeout: float = 10.0) -> None:
         try:
             # No proxy, no compression, no size limit: screenshots arrive as multi-megabyte strings.
-            self._ws = connect(ws_url, proxy=None, compression=None, max_size=None,
-                               open_timeout=open_timeout, ping_interval=None)
+            self._ws = connect(
+                ws_url,
+                proxy=None,
+                compression=None,
+                max_size=None,
+                open_timeout=open_timeout,
+                ping_interval=None,
+            )
         except (OSError, WebSocketException) as exc:
             raise CaptureError(CDP_ERROR, f"cannot connect to the page: {exc}", {}) from exc
         self._next_id = 0
 
-    def call(self, method: str, params: dict[str, Any] | None = None, *, timeout: float = 60.0) -> dict[str, Any]:
+    def call(
+        self, method: str, params: dict[str, Any] | None = None, *, timeout: float = 60.0
+    ) -> dict[str, Any]:
         self._next_id += 1
         message_id = self._next_id
         deadline = time.monotonic() + timeout
@@ -978,22 +1031,37 @@ class CdpSession:
                 if reply.get("id") != message_id:
                     continue  # an event, or the late reply to an earlier call that timed out
                 if "error" in reply:
-                    raise CaptureError(CDP_ERROR, str(reply["error"].get("message", "DevTools error")), {"method": method})
+                    raise CaptureError(
+                        CDP_ERROR, str(reply["error"].get("message", "DevTools error")), {"method": method}
+                    )
                 return reply.get("result") or {}
         except TimeoutError as exc:
-            raise CaptureError(CDP_ERROR, f"{method} timed out after {timeout:g}s", {"method": method}) from exc
+            raise CaptureError(
+                CDP_ERROR, f"{method} timed out after {timeout:g}s", {"method": method}
+            ) from exc
         except WebSocketException as exc:
-            raise CaptureError(CDP_ERROR, f"the DevTools connection failed: {exc}", {"method": method}) from exc
+            raise CaptureError(
+                CDP_ERROR, f"the DevTools connection failed: {exc}", {"method": method}
+            ) from exc
 
     def evaluate(self, expression: str, *, timeout: float = 60.0) -> Any:
         result = self.call(
             "Runtime.evaluate",
-            {"expression": expression, "returnByValue": True, "awaitPromise": True, "timeout": int(timeout * 1000)},
+            {
+                "expression": expression,
+                "returnByValue": True,
+                "awaitPromise": True,
+                "timeout": int(timeout * 1000),
+            },
             timeout=timeout + 5.0,
         )
         details = result.get("exceptionDetails")
         if details:
-            text = (details.get("exception") or {}).get("description") or details.get("text") or "page script failed"
+            text = (
+                (details.get("exception") or {}).get("description")
+                or details.get("text")
+                or "page script failed"
+            )
             first_line = str(text).splitlines()[0][:300]
             code = TV_INTERNALS_CHANGED if "TV_INTERNALS_CHANGED" in first_line else CDP_ERROR
             raise CaptureError(code, first_line, {"source": "page"})
@@ -1055,7 +1123,9 @@ _STANDALONE = {"alive", "diagnose"}
 
 @cache
 def _source(name: str) -> str:
-    return resources.files("tradingview_capture_mcp").joinpath("page", f"{name}.js").read_text(encoding="utf-8")
+    return (
+        resources.files("tradingview_capture_mcp").joinpath("page", f"{name}.js").read_text(encoding="utf-8")
+    )
 
 
 def build(name: str, args: dict[str, Any] | None = None) -> str:
@@ -1419,7 +1489,7 @@ def test_build_wraps_common_and_script_with_json_args():
     assert code.startswith("(async () => {\nconst ARGS = ")
     assert code.endswith("\n})()")
     args_line = code.splitlines()[1]
-    assert json.loads(args_line[len("const ARGS = "):-1]) == {"symbol": 'BINANCE:"X"', "timeframe": "1D"}
+    assert json.loads(args_line[len("const ARGS = ") : -1]) == {"symbol": 'BINANCE:"X"', "timeframe": "1D"}
     assert "function orderedStudies" in code
 
 
@@ -1668,28 +1738,43 @@ TARGET = "BINANCE:AAAUSDT.P"
 
 
 def snap(symbol=TARGET, resolution="1D", last=2000, studies=(("s1", "Alpha", 2, 2000, "new"),)):
-    return ReadySnapshot.from_page({
-        "symbol": symbol, "resolution": resolution, "lastBarTime": last,
-        "studies": [{"id": i, "name": n, "status": st, "lastTime": lt, "digest": d} for i, n, st, lt, d in studies],
-    })
+    return ReadySnapshot.from_page(
+        {
+            "symbol": symbol,
+            "resolution": resolution,
+            "lastBarTime": last,
+            "studies": [
+                {"id": i, "name": n, "status": st, "lastTime": lt, "digest": d} for i, n, st, lt, d in studies
+            ],
+        }
+    )
 
 
 def verdict(current, *, previous="same", before=None, elapsed=0.0):
-    return judge(target=TARGET, timeframe="1D", current=current, previous=current if previous == "same" else previous,
-                 before_switch=before, elapsed=elapsed)
+    return judge(
+        target=TARGET,
+        timeframe="1D",
+        current=current,
+        previous=current if previous == "same" else previous,
+        before_switch=before,
+        elapsed=elapsed,
+    )
 
 
 def test_ready_when_everything_lines_up():
     assert verdict(snap()).ready
 
 
-@pytest.mark.parametrize("current, reason", [
-    (snap(symbol="BINANCE:OLDUSDT.P"), "symbol"),
-    (snap(resolution="240"), "resolution"),
-    (snap(last=None), "bars"),
-    (snap(studies=(("s1", "Alpha", 1, 2000, "new"),)), "status:Alpha"),
-    (snap(studies=(("s1", "Alpha", 2, 1000, "new"),)), "lastTime:Alpha"),
-])
+@pytest.mark.parametrize(
+    "current, reason",
+    [
+        (snap(symbol="BINANCE:OLDUSDT.P"), "symbol"),
+        (snap(resolution="240"), "resolution"),
+        (snap(last=None), "bars"),
+        (snap(studies=(("s1", "Alpha", 1, 2000, "new"),)), "status:Alpha"),
+        (snap(studies=(("s1", "Alpha", 2, 1000, "new"),)), "lastTime:Alpha"),
+    ],
+)
 def test_each_unmet_condition_is_named(current, reason):
     result = verdict(current)
     assert (result.ready, result.reason) == (False, reason)
@@ -1721,16 +1806,29 @@ def test_wait_until_ready_polls_until_stable():
     reads = iter([snap(studies=(("s1", "Alpha", 1, 2000, "new"),)), snap(), snap()])
     now = [0.0]
     result, snapshot, polls, waited = wait_until_ready(
-        lambda: next(reads), target=TARGET, timeframe="1D", before_switch=None, timeout=30,
-        sleep=lambda s: now.__setitem__(0, now[0] + s), clock=lambda: now[0])
+        lambda: next(reads),
+        target=TARGET,
+        timeframe="1D",
+        before_switch=None,
+        timeout=30,
+        sleep=lambda s: now.__setitem__(0, now[0] + s),
+        clock=lambda: now[0],
+    )
     assert result.ready and snapshot == snap() and polls == 3 and waited == 2.0
 
 
 def test_wait_until_ready_times_out_with_the_reason():
     now = [0.0]
     with pytest.raises(CaptureError) as err:
-        wait_until_ready(lambda: snap(symbol="BINANCE:OLDUSDT.P"), target=TARGET, timeframe="1D", before_switch=None,
-                         timeout=5, sleep=lambda s: now.__setitem__(0, now[0] + s), clock=lambda: now[0])
+        wait_until_ready(
+            lambda: snap(symbol="BINANCE:OLDUSDT.P"),
+            target=TARGET,
+            timeframe="1D",
+            before_switch=None,
+            timeout=5,
+            sleep=lambda s: now.__setitem__(0, now[0] + s),
+            clock=lambda: now[0],
+        )
     assert err.value.code == "NOT_READY_TIMEOUT"
     assert err.value.detail["reason"] == "symbol"
 ```
@@ -1805,8 +1903,16 @@ def normalize_resolution(value: str) -> str:
     return "1" + upper if upper in {"D", "W", "M"} else upper
 
 
-def judge(*, target: str, timeframe: str, current: ReadySnapshot, previous: ReadySnapshot | None,
-          before_switch: ReadySnapshot | None, elapsed: float, grace_sec: float = 10.0) -> ReadyVerdict:
+def judge(
+    *,
+    target: str,
+    timeframe: str,
+    current: ReadySnapshot,
+    previous: ReadySnapshot | None,
+    before_switch: ReadySnapshot | None,
+    elapsed: float,
+    grace_sec: float = 10.0,
+) -> ReadyVerdict:
     """Ready means: right symbol and resolution, every study finished on the last bar, two equal reads,
     and the studies' output differs from the previous symbol's (or the grace period has passed)."""
     if current.symbol != target:
@@ -1831,10 +1937,18 @@ def judge(*, target: str, timeframe: str, current: ReadySnapshot, previous: Read
     return ReadyVerdict(True, None, unchanged)
 
 
-def wait_until_ready(read: Callable[[], ReadySnapshot], *, target: str, timeframe: str,
-                     before_switch: ReadySnapshot | None, timeout: float, sleep: Callable[[float], None],
-                     clock: Callable[[], float], interval: float = 1.0,
-                     grace_sec: float = 10.0) -> tuple[ReadyVerdict, ReadySnapshot, int, float]:
+def wait_until_ready(
+    read: Callable[[], ReadySnapshot],
+    *,
+    target: str,
+    timeframe: str,
+    before_switch: ReadySnapshot | None,
+    timeout: float,
+    sleep: Callable[[float], None],
+    clock: Callable[[], float],
+    interval: float = 1.0,
+    grace_sec: float = 10.0,
+) -> tuple[ReadyVerdict, ReadySnapshot, int, float]:
     start = clock()
     previous: ReadySnapshot | None = None
     polls = 0
@@ -1842,13 +1956,23 @@ def wait_until_ready(read: Callable[[], ReadySnapshot], *, target: str, timefram
         current = read()
         polls += 1
         elapsed = clock() - start
-        verdict = judge(target=target, timeframe=timeframe, current=current, previous=previous,
-                        before_switch=before_switch, elapsed=elapsed, grace_sec=grace_sec)
+        verdict = judge(
+            target=target,
+            timeframe=timeframe,
+            current=current,
+            previous=previous,
+            before_switch=before_switch,
+            elapsed=elapsed,
+            grace_sec=grace_sec,
+        )
         if verdict.ready:
             return verdict, current, polls, elapsed
         if elapsed >= timeout:
-            raise CaptureError(NOT_READY_TIMEOUT, f"the chart was not ready after {timeout:g}s",
-                               {"reason": verdict.reason, "polls": polls})
+            raise CaptureError(
+                NOT_READY_TIMEOUT,
+                f"the chart was not ready after {timeout:g}s",
+                {"reason": verdict.reason, "polls": polls},
+            )
         previous = current
         sleep(interval)
 ```
@@ -1898,7 +2022,9 @@ def png_bytes(width=8, height=6, color=(10, 20, 30)) -> bytes:
 
 
 def write_config(tmp_path: Path, output_root: Path, **extra) -> Path:
-    lines = [f'output_root = "{output_root}"'] + [f"{key} = {json.dumps(value)}" for key, value in extra.items()]
+    lines = [f'output_root = "{output_root}"'] + [
+        f"{key} = {json.dumps(value)}" for key, value in extra.items()
+    ]
     path = tmp_path / "config.toml"
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     os.chmod(path, 0o600)
@@ -1914,21 +2040,42 @@ def make_batch(out: Path, symbol: str, *, csv_text: str = DEFAULT_CSV, png: byte
     data = {
         "schemaVersion": 1,
         "identity": {"symbol": symbol, "resolution": "1D"},
-        "studies": [{"id": "s1", "name": "Alpha", "tables": [{"id": "0", "rows": [["Head", None]]}],
-                     "labels": [{"text": "9.5", "time": 2000}], "lines": [], "boxes": [],
-                     "lastValues": [["Quarter", 11.25]], "inputs": {"length": 14}}],
+        "studies": [
+            {
+                "id": "s1",
+                "name": "Alpha",
+                "tables": [{"id": "0", "rows": [["Head", None]]}],
+                "labels": [{"text": "9.5", "time": 2000}],
+                "lines": [],
+                "boxes": [],
+                "lastValues": [["Quarter", 11.25]],
+                "inputs": {"length": 14},
+            }
+        ],
         "drawings": [],
         "readiness": {"polls": 3},
     }
     write_new(folder / "image.png", png or png_bytes(40, 30))
     write_new(folder / "chart.csv", csv_text.encode("utf-8"))
     write_json_new(folder / "data.json", data)
-    write_json_new(folder / "capture.json", {
-        "captureMethod": "CDP_DESKTOP", "desktop": {"version": "3.4.1"},
-        "times": {"finishedAt": {"iso": "2026-10-14T02:00:00.000+08:00", "unix": 1791914400.0}}, "files": {}})
-    write_json_new(out / "capture-manifest.json", {
-        "tool": {"name": "tradingview-capture-mcp"}, "state": "finished",
-        "symbols": [{"symbol": symbol, "status": "ok"}], "totals": {"succeeded": 1}})
+    write_json_new(
+        folder / "capture.json",
+        {
+            "captureMethod": "CDP_DESKTOP",
+            "desktop": {"version": "3.4.1"},
+            "times": {"finishedAt": {"iso": "2026-10-14T02:00:00.000+08:00", "unix": 1791914400.0}},
+            "files": {},
+        },
+    )
+    write_json_new(
+        out / "capture-manifest.json",
+        {
+            "tool": {"name": "tradingview-capture-mcp"},
+            "state": "finished",
+            "symbols": [{"symbol": symbol, "status": "ok"}],
+            "totals": {"succeeded": 1},
+        },
+    )
     return folder
 ```
 
@@ -2014,9 +2161,19 @@ def crop_png(path: Path, x: int, y: int, width: int, height: int) -> bytes:
         if image.format != "PNG":
             raise CaptureError(INVALID_ARGUMENT, "the image is not a PNG", {"path": path.name})
         image_width, image_height = image.size
-        if x < 0 or y < 0 or width <= 0 or height <= 0 or x + width > image_width or y + height > image_height:
-            raise CaptureError(INVALID_ARGUMENT, "the crop box is outside the image",
-                               {"image": [image_width, image_height], "box": [x, y, width, height]})
+        if (
+            x < 0
+            or y < 0
+            or width <= 0
+            or height <= 0
+            or x + width > image_width
+            or y + height > image_height
+        ):
+            raise CaptureError(
+                INVALID_ARGUMENT,
+                "the crop box is outside the image",
+                {"image": [image_width, image_height], "box": [x, y, width, height]},
+            )
         buffer = io.BytesIO()
         image.crop((x, y, x + width, y + height)).save(buffer, format="PNG")
         return buffer.getvalue()
@@ -2059,7 +2216,7 @@ from tradingview_capture_mcp import desktop
 from tradingview_capture_mcp.config import Config
 from tradingview_capture_mcp.errors import CaptureError
 
-FAKE_APP = '''import json, sys
+FAKE_APP = """import json, sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 port = int([a for a in sys.argv[1:] if a.startswith("--remote-debugging-port=")][0].split("=", 1)[1])
 class Handler(BaseHTTPRequestHandler):
@@ -2072,7 +2229,7 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
 HTTPServer(("127.0.0.1", port), Handler).serve_forever()
-'''
+"""
 
 
 def free_port():
@@ -2153,13 +2310,23 @@ def test_parse_version():
 
 def test_listening_addresses_parses_lsof(monkeypatch):
     output = "p100\nf20\nn127.0.0.1:9333\np100\nf21\nn[::1]:9333\n"
-    monkeypatch.setattr(desktop.subprocess, "run",
-                        lambda *a, **k: subprocess.CompletedProcess(a, 0, stdout=output, stderr=""))
+    monkeypatch.setattr(
+        desktop.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 0, stdout=output, stderr="")
+    )
     assert desktop.listening_addresses(9333) == ["127.0.0.1", "[::1]"]
 
 
 def test_wait_for_chart_page_retries_until_the_tab_appears(monkeypatch):
-    answers = [[], [{"type": "page", "url": "https://www.tradingview.com/chart/AbCd1234/", "webSocketDebuggerUrl": "ws://x"}]]
+    answers = [
+        [],
+        [
+            {
+                "type": "page",
+                "url": "https://www.tradingview.com/chart/AbCd1234/",
+                "webSocketDebuggerUrl": "ws://x",
+            }
+        ],
+    ]
     monkeypatch.setattr(desktop.cdp, "http_json", lambda port, path, timeout=3.0: answers.pop(0))
     monkeypatch.setattr(desktop.time, "sleep", lambda seconds: None)
     assert desktop.wait_for_chart_page(9333, "AbCd1234", timeout=5)["webSocketDebuggerUrl"] == "ws://x"
@@ -2204,15 +2371,24 @@ def test_viewport_override_and_reset():
     chart.set_viewport(Viewport(800, 600, 2.0))
     chart.clear_viewport()
     assert session.calls == [
-        ("call", "Emulation.setDeviceMetricsOverride", {"width": 800, "height": 600, "deviceScaleFactor": 2.0, "mobile": False}),
+        (
+            "call",
+            "Emulation.setDeviceMetricsOverride",
+            {"width": 800, "height": 600, "deviceScaleFactor": 2.0, "mobile": False},
+        ),
         ("call", "Emulation.clearDeviceMetricsOverride", None),
     ]
 
 
 def test_wait_for_chart_api_retries_while_the_page_loads(monkeypatch):
     monkeypatch.setattr(driver_module.time, "sleep", lambda seconds: None)
-    session = FakeSession([CaptureError("CDP_ERROR", "not yet"), {"api": "undefined", "symbol": None},
-                           {"api": "object", "symbol": "BINANCE:BTCUSDT.P"}])
+    session = FakeSession(
+        [
+            CaptureError("CDP_ERROR", "not yet"),
+            {"api": "undefined", "symbol": None},
+            {"api": "object", "symbol": "BINANCE:BTCUSDT.P"},
+        ]
+    )
     _wait_for_chart_api(CdpDriver(session), timeout=30)
     assert len(session.calls) == 3
 
@@ -2272,13 +2448,19 @@ class DesktopSession:
 
 
 def running_pids(process_name: str = "TradingView") -> list[int]:
-    result = subprocess.run(["/usr/bin/pgrep", "-x", process_name], capture_output=True, text=True, check=False)
+    result = subprocess.run(
+        ["/usr/bin/pgrep", "-x", process_name], capture_output=True, text=True, check=False
+    )
     return [int(pid) for pid in result.stdout.split()]
 
 
 def listening_addresses(port: int) -> list[str]:
-    result = subprocess.run(["/usr/sbin/lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-F", "n"],
-                            capture_output=True, text=True, check=False)
+    result = subprocess.run(
+        ["/usr/sbin/lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-F", "n"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
     return [line[1:].rsplit(":", 1)[0] for line in result.stdout.splitlines() if line.startswith("n")]
 
 
@@ -2290,22 +2472,35 @@ def parse_version(info: dict[str, Any]) -> str:
 def launch(config: Config, *, startup_timeout: float = 40.0, poll: float = 0.5) -> DesktopSession:
     """Start TradingView Desktop with the DevTools port; refuse to touch a copy the user already runs."""
     if not config.app_binary.is_file():
-        raise CaptureError(TV_NOT_INSTALLED, "TradingView Desktop was not found", {"app_path": str(config.app_path)})
+        raise CaptureError(
+            TV_NOT_INSTALLED, "TradingView Desktop was not found", {"app_path": str(config.app_path)}
+        )
     if running_pids():
-        raise CaptureError(TV_ALREADY_RUNNING, "TradingView Desktop is already running; quit it and retry", {})
+        raise CaptureError(
+            TV_ALREADY_RUNNING, "TradingView Desktop is already running; quit it and retry", {}
+        )
     if listening_addresses(config.debug_port):
         raise CaptureError(PORT_IN_USE, "the debug port is already in use", {"port": config.debug_port})
     process = subprocess.Popen(
         [str(config.app_binary), f"--remote-debugging-port={config.debug_port}"],
-        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
     )
     try:
         info = _wait_for_devtools(process, config.debug_port, startup_timeout, poll)
         addresses = listening_addresses(config.debug_port)
         if not addresses or any(address not in LOCAL_ADDRESSES for address in addresses):
-            raise CaptureError(CDP_NOT_LOCAL, "the debug port must listen on loopback only", {"addresses": addresses})
-        return DesktopSession(process=process, port=config.debug_port, version=parse_version(info),
-                              browser=str(info.get("Browser", "")))
+            raise CaptureError(
+                CDP_NOT_LOCAL, "the debug port must listen on loopback only", {"addresses": addresses}
+            )
+        return DesktopSession(
+            process=process,
+            port=config.debug_port,
+            version=parse_version(info),
+            browser=str(info.get("Browser", "")),
+        )
     except BaseException:
         stop_process(process)
         raise
@@ -2315,8 +2510,11 @@ def _wait_for_devtools(process: subprocess.Popen, port: int, timeout: float, pol
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if process.poll() is not None:
-            raise CaptureError(TV_STARTUP_TIMEOUT, "TradingView Desktop exited during startup",
-                               {"returncode": process.returncode})
+            raise CaptureError(
+                TV_STARTUP_TIMEOUT,
+                "TradingView Desktop exited during startup",
+                {"returncode": process.returncode},
+            )
         try:
             return cdp.http_json(port, "/json/version", timeout=2.0)
         except (OSError, ValueError):
@@ -2324,7 +2522,9 @@ def _wait_for_devtools(process: subprocess.Popen, port: int, timeout: float, pol
     raise CaptureError(TV_STARTUP_TIMEOUT, f"DevTools did not answer within {timeout:g}s", {"port": port})
 
 
-def wait_for_chart_page(port: int, layout: str, *, timeout: float = 60.0, poll: float = 1.0) -> dict[str, Any]:
+def wait_for_chart_page(
+    port: int, layout: str, *, timeout: float = 60.0, poll: float = 1.0
+) -> dict[str, Any]:
     """Wait until the restored tab for `layout` is listed, then return its DevTools target."""
     deadline = time.monotonic() + timeout
     while True:
@@ -2335,7 +2535,9 @@ def wait_for_chart_page(port: int, layout: str, *, timeout: float = 60.0, poll: 
                 raise
         except (OSError, ValueError) as exc:
             if time.monotonic() >= deadline:
-                raise CaptureError(LAYOUT_NOT_FOUND, "the DevTools target list never loaded", {"layout": layout}) from exc
+                raise CaptureError(
+                    LAYOUT_NOT_FOUND, "the DevTools target list never loaded", {"layout": layout}
+                ) from exc
         time.sleep(poll)
 
 
@@ -2404,8 +2606,15 @@ class CdpDriver:
         return self._session.evaluate(page.build(script, args), timeout=timeout)
 
     def set_viewport(self, viewport: Viewport) -> None:
-        self._session.call("Emulation.setDeviceMetricsOverride", {
-            "width": viewport.width, "height": viewport.height, "deviceScaleFactor": viewport.scale, "mobile": False})
+        self._session.call(
+            "Emulation.setDeviceMetricsOverride",
+            {
+                "width": viewport.width,
+                "height": viewport.height,
+                "deviceScaleFactor": viewport.scale,
+                "mobile": False,
+            },
+        )
 
     def clear_viewport(self) -> None:
         self._session.call("Emulation.clearDeviceMetricsOverride")
@@ -2423,7 +2632,9 @@ class RealDesktop:
 
     def start(self) -> tuple[DesktopInfo, ChartDriver]:
         self._session = desktop.launch(self._config)
-        target = desktop.wait_for_chart_page(self._config.debug_port, self._layout, timeout=self._page_timeout)
+        target = desktop.wait_for_chart_page(
+            self._config.debug_port, self._layout, timeout=self._page_timeout
+        )
         self._cdp = cdp.CdpSession(target["webSocketDebuggerUrl"])
         driver = CdpDriver(self._cdp)
         _wait_for_chart_api(driver, self._page_timeout)
@@ -2452,7 +2663,9 @@ def _wait_for_chart_api(driver: ChartDriver, timeout: float) -> None:
                 raise
             state = {"error": exc.message}
         if time.monotonic() >= deadline:
-            raise CaptureError(TV_INTERNALS_CHANGED, "the chart API did not become available", {"state": state})
+            raise CaptureError(
+                TV_INTERNALS_CHANGED, "the chart API did not become available", {"state": state}
+            )
         time.sleep(1.0)
 ```
 
@@ -2490,27 +2703,54 @@ from helpers import png_bytes
 
 from tradingview_capture_mcp.driver import DesktopInfo
 
-OK_DIAGNOSE = {"tradingViewApi": "object", "checks": [
-    {"name": "activeChart", "ok": True, "detail": []},
-    {"name": "takeClientScreenshot", "ok": True, "detail": "function"},
-    {"name": "chartWidget", "ok": True, "detail": 2},
-    {"name": "mainSeriesBars", "ok": True, "detail": {"size": 2, "firstIndex": "function", "lastIndex": "function", "valueAt": "function"}},
-    {"name": "dataSources", "ok": True, "detail": 4},
-    {"name": "panes", "ok": True, "detail": 2},
-    {"name": "studies", "ok": True, "detail": [{
-        "hasMetaInfo": True, "plots": 2, "zorder": "function", "status": "function",
-        "data": {"size": 2, "valueAt": "function"},
-        "collections": ["dwgtablecells", "dwglabels", "dwglines", "dwgboxes"]}]},
-    {"name": "shapes", "ok": True, "detail": []},
-]}
+OK_DIAGNOSE = {
+    "tradingViewApi": "object",
+    "checks": [
+        {"name": "activeChart", "ok": True, "detail": []},
+        {"name": "takeClientScreenshot", "ok": True, "detail": "function"},
+        {"name": "chartWidget", "ok": True, "detail": 2},
+        {
+            "name": "mainSeriesBars",
+            "ok": True,
+            "detail": {"size": 2, "firstIndex": "function", "lastIndex": "function", "valueAt": "function"},
+        },
+        {"name": "dataSources", "ok": True, "detail": 4},
+        {"name": "panes", "ok": True, "detail": 2},
+        {
+            "name": "studies",
+            "ok": True,
+            "detail": [
+                {
+                    "hasMetaInfo": True,
+                    "plots": 2,
+                    "zorder": "function",
+                    "status": "function",
+                    "data": {"size": 2, "valueAt": "function"},
+                    "collections": ["dwgtablecells", "dwglabels", "dwglines", "dwgboxes"],
+                }
+            ],
+        },
+        {"name": "shapes", "ok": True, "detail": []},
+    ],
+}
 CSV = "time,open,high,low,close,Quarter\n1000,1,2,0.5,1.5,10.5\n2000,1.5,2.5,1,2,11.25"
 
 
 class FakeChart:
     """Plays the page scripts. After a switch the studies keep the old output for `settle_polls` reads."""
 
-    def __init__(self, *, start_symbol="SSE_DLY:000001", settle_polls=2, studies=("Alpha", "Beta"),
-                 unknown=(), never_ready=(), missing_study=None, static_study=None, diagnose=None):
+    def __init__(
+        self,
+        *,
+        start_symbol="SSE_DLY:000001",
+        settle_polls=2,
+        studies=("Alpha", "Beta"),
+        unknown=(),
+        never_ready=(),
+        missing_study=None,
+        static_study=None,
+        diagnose=None,
+    ):
         self.symbol = start_symbol
         self.previous = start_symbol
         self.resolution = "1D"
@@ -2542,25 +2782,49 @@ class FakeChart:
         self.polls += 1
         settled = self.polls > self.settle_polls and self.symbol not in self.never_ready
         source = self.symbol if settled else self.previous
-        return {"symbol": self.symbol, "resolution": self.resolution, "lastBarTime": 2000, "studies": [
-            {"id": f"s{i}", "name": name, "status": 2 if settled else 1, "lastTime": 2000,
-             "digest": f"{name}:static" if name == self.static_study else f"{name}:{source}"}
-            for i, name in enumerate(self.studies)]}
+        return {
+            "symbol": self.symbol,
+            "resolution": self.resolution,
+            "lastBarTime": 2000,
+            "studies": [
+                {
+                    "id": f"s{i}",
+                    "name": name,
+                    "status": 2 if settled else 1,
+                    "lastTime": 2000,
+                    "digest": f"{name}:static" if name == self.static_study else f"{name}:{source}",
+                }
+                for i, name in enumerate(self.studies)
+            ],
+        }
 
     def _switch(self, args):
         before = {"symbol": self.symbol, "resolution": self.resolution}
         if args["symbol"] not in self.unknown:
             self.previous, self.symbol, self.polls = self.symbol, args["symbol"], 0
         self.resolution = args.get("timeframe") or self.resolution
-        return {"before": before, "after": {"symbol": self.symbol, "resolution": self.resolution}, "timedOut": False}
+        return {
+            "before": before,
+            "after": {"symbol": self.symbol, "resolution": self.resolution},
+            "timedOut": False,
+        }
 
     def _extract(self, args):
         names = [name for name in self.studies if (self.symbol, name) != self.missing_study]
         return {
             "identity": {"symbol": self.symbol, "resolution": self.resolution, "lastBar": {"time": 2000}},
-            "studies": [{"id": f"s{i}", "name": name, "tables": [{"id": "0", "rows": [[name, self.symbol]]}],
-                         "labels": [], "lines": [], "boxes": [], "lastValues": [["Quarter", 11.25]]}
-                        for i, name in enumerate(names)],
+            "studies": [
+                {
+                    "id": f"s{i}",
+                    "name": name,
+                    "tables": [{"id": "0", "rows": [[name, self.symbol]]}],
+                    "labels": [],
+                    "lines": [],
+                    "boxes": [],
+                    "lastValues": [["Quarter", 11.25]],
+                }
+                for i, name in enumerate(names)
+            ],
             "drawings": [],
             "series": {"columns": 6, "rows": 2, "csv": CSV},
         }
@@ -2614,14 +2878,20 @@ def test_a_healthy_report_has_no_problems():
     assert problems(OK_DIAGNOSE) == []
 
 
-@pytest.mark.parametrize("mutate, expected", [
-    (lambda r: r["checks"].__setitem__(0, {"name": "activeChart", "ok": False, "error": "gone"}), "activeChart"),
-    (lambda r: r["checks"][0].__setitem__("detail", ["setSymbol"]), "activeChart.methods"),
-    (lambda r: r["checks"][1].__setitem__("detail", "undefined"), "takeClientScreenshot.function"),
-    (lambda r: r["checks"][3]["detail"].__setitem__("valueAt", "undefined"), "mainSeriesBars.methods"),
-    (lambda r: r["checks"][6]["detail"][0].__setitem__("collections", ["dwglabels"]), "studies.shape"),
-    (lambda r: r["checks"].pop(), "shapes"),
-])
+@pytest.mark.parametrize(
+    "mutate, expected",
+    [
+        (
+            lambda r: r["checks"].__setitem__(0, {"name": "activeChart", "ok": False, "error": "gone"}),
+            "activeChart",
+        ),
+        (lambda r: r["checks"][0].__setitem__("detail", ["setSymbol"]), "activeChart.methods"),
+        (lambda r: r["checks"][1].__setitem__("detail", "undefined"), "takeClientScreenshot.function"),
+        (lambda r: r["checks"][3]["detail"].__setitem__("valueAt", "undefined"), "mainSeriesBars.methods"),
+        (lambda r: r["checks"][6]["detail"][0].__setitem__("collections", ["dwglabels"]), "studies.shape"),
+        (lambda r: r["checks"].pop(), "shapes"),
+    ],
+)
 def test_each_missing_piece_is_named(mutate, expected):
     report = copy.deepcopy(OK_DIAGNOSE)
     mutate(report)
@@ -2650,8 +2920,16 @@ from .driver import RealDesktop
 from .store import BatchLock
 from .validation import check_layout
 
-REQUIRED_CHECKS = ("activeChart", "takeClientScreenshot", "chartWidget", "mainSeriesBars", "dataSources", "panes",
-                   "studies", "shapes")
+REQUIRED_CHECKS = (
+    "activeChart",
+    "takeClientScreenshot",
+    "chartWidget",
+    "mainSeriesBars",
+    "dataSources",
+    "panes",
+    "studies",
+    "shapes",
+)
 GRAPHICS_COLLECTIONS = 4
 
 
@@ -2670,8 +2948,12 @@ def problems(report: dict[str, Any]) -> list[str]:
     if "studies" not in found:
         for study in checks["studies"].get("detail") or []:
             data = study.get("data") or {}
-            if not (study.get("hasMetaInfo") and study.get("zorder") == "function" and data.get("valueAt") == "function"
-                    and len(study.get("collections") or []) >= GRAPHICS_COLLECTIONS):
+            if not (
+                study.get("hasMetaInfo")
+                and study.get("zorder") == "function"
+                and data.get("valueAt") == "function"
+                and len(study.get("collections") or []) >= GRAPHICS_COLLECTIONS
+            ):
                 found.append("studies.shape")
                 break
     return found
@@ -2686,7 +2968,11 @@ def run_doctor(config: Config, layout: str) -> dict[str, Any]:
             report = driver.run("diagnose")
         finally:
             desktop.stop()
-    return {"desktop": {"version": info.version, "browser": info.browser}, "problems": problems(report), "report": report}
+    return {
+        "desktop": {"version": info.version, "browser": info.browser},
+        "problems": problems(report),
+        "report": report,
+    }
 ```
 
 Run: `uv run pytest tests/test_diagnostics.py -q`
@@ -2720,8 +3006,14 @@ def config(tmp_path):
 
 
 def make_request(config, **changes):
-    base = CaptureRequest(layout="Layout01", symbols=SYMBOLS, timeframe="1D", output_dir=str(config.output_root / "batch"),
-                          required_studies=("Alpha",), viewport=Viewport(800, 600, 2.0))
+    base = CaptureRequest(
+        layout="Layout01",
+        symbols=SYMBOLS,
+        timeframe="1D",
+        output_dir=str(config.output_root / "batch"),
+        required_studies=("Alpha",),
+        viewport=Viewport(800, 600, 2.0),
+    )
     return dataclasses.replace(base, **changes)
 
 
@@ -2729,7 +3021,9 @@ def capture(config, request, chart=None, **desktop_options):
     chart = chart or FakeChart()
     desktop = FakeDesktop(chart, **desktop_options)
     clock = FakeClock()
-    summary = run_capture(request, config, job_id="a" * 32, desktop=desktop, pid=4242, sleep=clock.sleep, clock=clock)
+    summary = run_capture(
+        request, config, job_id="a" * 32, desktop=desktop, pid=4242, sleep=clock.sleep, clock=clock
+    )
     return summary, chart, desktop
 
 
@@ -2745,14 +3039,22 @@ def test_captures_every_symbol_and_restores_the_chart(config):
         for name in ("image.png", "chart.csv", "data.json", "capture.json"):
             assert stat.S_IMODE((folder / name).stat().st_mode) == 0o600
         record = read_json(folder / "capture.json")
-        assert (record["symbol"], record["captureMethod"], record["desktop"]["version"]) == (code, "CDP_DESKTOP", "3.4.1")
+        assert (record["symbol"], record["captureMethod"], record["desktop"]["version"]) == (
+            code,
+            "CDP_DESKTOP",
+            "3.4.1",
+        )
         assert record["files"]["chart.csv"]["sha256"] == sha256_bytes((folder / "chart.csv").read_bytes())
         assert record["files"]["image.png"]["width"] == 40
     data = read_json(out / "raw" / safe_name(SYMBOLS[0]) / "data.json")
     assert data["readiness"]["polls"] >= 2
     assert data["readiness"]["unchangedAfterSwitch"] == []
     manifest = read_json(out / "capture-manifest.json")
-    assert (manifest["state"], manifest["desktopVersionChanged"], manifest["attempts"]) == ("finished", False, 1)
+    assert (manifest["state"], manifest["desktopVersionChanged"], manifest["attempts"]) == (
+        "finished",
+        False,
+        1,
+    )
     job = read_json(out / "job.json")
     assert (job["state"], job["succeeded"], job["pid"]) == ("finished", 3, 4242)
     assert read_json(out / "batch.json")["request"]["symbols"] == list(SYMBOLS)
@@ -2785,8 +3087,10 @@ def test_later_failures_are_recorded_and_the_batch_goes_on(config):
     summary, _, _ = capture(config, make_request(config), chart)
     assert summary["state"] == "finished"
     assert summary["totals"] == {"requested": 3, "succeeded": 1, "failed": 2, "pending": 0}
-    assert [(f["symbol"], f["code"]) for f in summary["failures"]] == [(SYMBOLS[1], "STUDY_MISSING"),
-                                                                       (SYMBOLS[2], "NOT_READY_TIMEOUT")]
+    assert [(f["symbol"], f["code"]) for f in summary["failures"]] == [
+        (SYMBOLS[1], "STUDY_MISSING"),
+        (SYMBOLS[2], "NOT_READY_TIMEOUT"),
+    ]
     assert not (config.output_root / "batch" / "raw" / safe_name(SYMBOLS[1])).exists()
 
 
@@ -2816,7 +3120,10 @@ def test_retry_runs_only_failed_symbols_and_keeps_earlier_files(config):
     assert read_json(out / "capture-manifest.json")["attempts"] == 2
     assert read_json(out / "attempts" / "2" / "attempt.json")["symbols"] == [SYMBOLS[1]]
     assert (out / "raw" / safe_name(SYMBOLS[0]) / "capture.json").read_bytes() == first
-    assert [args["symbol"] for script, args in chart.calls if script == "switch"] == [SYMBOLS[1], "SSE_DLY:000001"]
+    assert [args["symbol"] for script, args in chart.calls if script == "switch"] == [
+        SYMBOLS[1],
+        "SSE_DLY:000001",
+    ]
 
 
 def test_retry_with_nothing_left_to_do(config):
@@ -2837,7 +3144,9 @@ def test_refuses_an_existing_output_dir_and_a_held_lock(config):
 
 
 def test_a_failed_start_still_leaves_a_manifest(config):
-    summary, _, desktop = capture(config, make_request(config), fail=CaptureError("TV_ALREADY_RUNNING", "quit it first"))
+    summary, _, desktop = capture(
+        config, make_request(config), fail=CaptureError("TV_ALREADY_RUNNING", "quit it first")
+    )
     out = config.output_root / "batch"
     assert (summary["state"], summary["error"]["code"]) == ("stopped", "TV_ALREADY_RUNNING")
     assert read_json(out / "capture-manifest.json")["desktop"]["version"] is None
@@ -2847,10 +3156,20 @@ def test_a_failed_start_still_leaves_a_manifest(config):
 
 def test_a_desktop_version_change_is_flagged(config):
     for name, manifest in {
-        "old": {"tool": {"name": "tradingview-capture-mcp"}, "state": "finished", "totals": {"succeeded": 1},
-                "finishedAt": {"unix": 5}, "desktop": {"version": "3.4.0"}},
-        "stopped": {"tool": {"name": "tradingview-capture-mcp"}, "state": "stopped", "totals": {"succeeded": 0},
-                    "finishedAt": {"unix": 9}, "desktop": {"version": "1.0.0"}},
+        "old": {
+            "tool": {"name": "tradingview-capture-mcp"},
+            "state": "finished",
+            "totals": {"succeeded": 1},
+            "finishedAt": {"unix": 5},
+            "desktop": {"version": "3.4.0"},
+        },
+        "stopped": {
+            "tool": {"name": "tradingview-capture-mcp"},
+            "state": "stopped",
+            "totals": {"succeeded": 0},
+            "finishedAt": {"unix": 9},
+            "desktop": {"version": "1.0.0"},
+        },
         "foreign": {"schemaVersion": 1, "records": []},
     }.items():
         (config.output_root / name).mkdir()
@@ -2861,11 +3180,20 @@ def test_a_desktop_version_change_is_flagged(config):
     assert manifest["desktop"]["previousVersion"] == "3.4.0"
 
 
-@pytest.mark.parametrize("changes", [
-    {"layout": "bad/layout"}, {"symbols": ()}, {"symbols": (SYMBOLS[0], SYMBOLS[0])}, {"symbols": ("btcusdt",)},
-    {"symbols": ("A:B!", "A:B&")}, {"timeframe": "4H"}, {"ready_timeout_sec": 1.0},
-    {"viewport": Viewport(10, 10, 1.0)}, {"required_studies": ("",)},
-])
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"layout": "bad/layout"},
+        {"symbols": ()},
+        {"symbols": (SYMBOLS[0], SYMBOLS[0])},
+        {"symbols": ("btcusdt",)},
+        {"symbols": ("A:B!", "A:B&")},
+        {"timeframe": "4H"},
+        {"ready_timeout_sec": 1.0},
+        {"viewport": Viewport(10, 10, 1.0)},
+        {"required_studies": ("",)},
+    ],
+)
 def test_invalid_requests_are_rejected(config, changes):
     with pytest.raises(CaptureError) as err:
         validate_request(make_request(config, **changes))
@@ -2953,10 +3281,16 @@ class CaptureRequest:
     retry_failed: bool = False
 
     def to_dict(self) -> dict[str, Any]:
-        return {"layout": self.layout, "symbols": list(self.symbols), "timeframe": self.timeframe,
-                "output_dir": self.output_dir, "required_studies": list(self.required_studies),
-                "viewport": asdict(self.viewport) if self.viewport else None,
-                "ready_timeout_sec": self.ready_timeout_sec, "retry_failed": self.retry_failed}
+        return {
+            "layout": self.layout,
+            "symbols": list(self.symbols),
+            "timeframe": self.timeframe,
+            "output_dir": self.output_dir,
+            "required_studies": list(self.required_studies),
+            "viewport": asdict(self.viewport) if self.viewport else None,
+            "ready_timeout_sec": self.ready_timeout_sec,
+            "retry_failed": self.retry_failed,
+        }
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> CaptureRequest:
@@ -2968,8 +3302,11 @@ class CaptureRequest:
                 timeframe=str(raw["timeframe"]),
                 output_dir=str(raw["output_dir"]),
                 required_studies=tuple(str(s) for s in raw.get("required_studies") or ()),
-                viewport=Viewport(int(viewport["width"]), int(viewport["height"]), float(viewport.get("scale", 1.0)))
-                if viewport else None,
+                viewport=Viewport(
+                    int(viewport["width"]), int(viewport["height"]), float(viewport.get("scale", 1.0))
+                )
+                if viewport
+                else None,
                 ready_timeout_sec=float(raw.get("ready_timeout_sec", 60.0)),
                 retry_failed=bool(raw.get("retry_failed", False)),
             )
@@ -3000,8 +3337,9 @@ def validate_request(request: CaptureRequest) -> None:
     if len(request.required_studies) > 32 or any(not s or len(s) > 128 for s in request.required_studies):
         bad("required_studies must be up to 32 non-empty names")
     viewport = request.viewport
-    if viewport is not None and not (200 <= viewport.width <= 8000 and 200 <= viewport.height <= 8000
-                                     and 0.5 <= viewport.scale <= 4):
+    if viewport is not None and not (
+        200 <= viewport.width <= 8000 and 200 <= viewport.height <= 8000 and 0.5 <= viewport.scale <= 4
+    ):
         bad("viewport must be 200-8000 pixels per side with a scale of 0.5-4")
 
 
@@ -3012,9 +3350,21 @@ class Progress:
         self._path = path
         now = stamp()
         self.state: dict[str, Any] = {
-            "schemaVersion": 1, "jobId": job_id, "pid": pid, "state": "running", "outputDir": str(output_dir),
-            "startedAt": now, "updatedAt": now, "total": total, "done": 0, "succeeded": 0, "failed": 0,
-            "current": None, "failures": [], "desktopVersionChanged": None, "error": None,
+            "schemaVersion": 1,
+            "jobId": job_id,
+            "pid": pid,
+            "state": "running",
+            "outputDir": str(output_dir),
+            "startedAt": now,
+            "updatedAt": now,
+            "total": total,
+            "done": 0,
+            "succeeded": 0,
+            "failed": 0,
+            "current": None,
+            "failures": [],
+            "desktopVersionChanged": None,
+            "error": None,
         }
         replace_json(self._path, self.state)
 
@@ -3036,7 +3386,10 @@ class Progress:
 def previous_desktop_version(output_root: Path, exclude: Path) -> str | None:
     """Desktop version of the newest finished batch from this tool under the output root."""
     best: tuple[float, str | None] | None = None
-    for path in [*output_root.glob("*/capture-manifest.json"), *output_root.glob("*/*/capture-manifest.json")]:
+    for path in [
+        *output_root.glob("*/capture-manifest.json"),
+        *output_root.glob("*/*/capture-manifest.json"),
+    ]:
         if path.parent == exclude:
             continue
         try:
@@ -3053,9 +3406,16 @@ def previous_desktop_version(output_root: Path, exclude: Path) -> str | None:
     return best[1] if best else None
 
 
-def run_capture(request: CaptureRequest, config: Config, *, job_id: str, desktop: DesktopControl, pid: int = 0,
-                sleep: Callable[[float], None] = time.sleep,
-                clock: Callable[[], float] = time.monotonic) -> dict[str, Any]:
+def run_capture(
+    request: CaptureRequest,
+    config: Config,
+    *,
+    job_id: str,
+    desktop: DesktopControl,
+    pid: int = 0,
+    sleep: Callable[[float], None] = time.sleep,
+    clock: Callable[[], float] = time.monotonic,
+) -> dict[str, Any]:
     validate_request(request)
     out = resolve_inside_root(config.output_root, request.output_dir)
     with BatchLock(config.output_root):
@@ -3067,7 +3427,9 @@ def run_capture(request: CaptureRequest, config: Config, *, job_id: str, desktop
             results: dict[str, dict[str, Any]] = {s["symbol"]: s for s in previous.get("symbols", [])}
             todo = [code for code in request.symbols if results.get(code, {}).get("status") != "ok"]
             if not todo:
-                raise CaptureError(NOT_FOUND, "this batch has no failed or pending symbols", {"output_dir": str(out)})
+                raise CaptureError(
+                    NOT_FOUND, "this batch has no failed or pending symbols", {"output_dir": str(out)}
+                )
             attempt = int(previous.get("attempts", 1)) + 1
             started_at = previous.get("startedAt") or stamp()
         else:
@@ -3075,11 +3437,17 @@ def run_capture(request: CaptureRequest, config: Config, *, job_id: str, desktop
             ensure_dir(out / "raw")
             ensure_dir(out / "attempts")
             started_at = stamp()
-            write_json_new(out / "batch.json", {
-                "schemaVersion": 1, "tool": {"name": TOOL_NAME, "version": __version__}, "jobId": job_id,
-                "startedAt": started_at, "request": request.to_dict(),
-                "symbolsSha256": sha256_bytes("\n".join(request.symbols).encode("utf-8")),
-            })
+            write_json_new(
+                out / "batch.json",
+                {
+                    "schemaVersion": 1,
+                    "tool": {"name": TOOL_NAME, "version": __version__},
+                    "jobId": job_id,
+                    "startedAt": started_at,
+                    "request": request.to_dict(),
+                    "symbolsSha256": sha256_bytes("\n".join(request.symbols).encode("utf-8")),
+                },
+            )
             results, todo, attempt = {}, list(request.symbols), 1
         attempt_dir = out / "attempts" / str(attempt)
         make_dir_new(attempt_dir)
@@ -3095,7 +3463,9 @@ def run_capture(request: CaptureRequest, config: Config, *, job_id: str, desktop
             progress.update(desktopVersionChanged=changed)
             issues = problems(driver.run("diagnose"))
             if issues:
-                raise CaptureError(TV_INTERNALS_CHANGED, "TradingView's internals changed", {"failedChecks": issues})
+                raise CaptureError(
+                    TV_INTERNALS_CHANGED, "TradingView's internals changed", {"failedChecks": issues}
+                )
             original = driver.run("ready")
             try:
                 if request.viewport is not None:
@@ -3104,13 +3474,28 @@ def run_capture(request: CaptureRequest, config: Config, *, job_id: str, desktop
                 for index, code in enumerate(todo):
                     progress.update(current=code)
                     try:
-                        result = capture_symbol(driver, request, out, code, attempt=attempt, attempt_dir=attempt_dir,
-                                                self_check=index == 0, info=info, sleep=sleep, clock=clock)
+                        result = capture_symbol(
+                            driver,
+                            request,
+                            out,
+                            code,
+                            attempt=attempt,
+                            attempt_dir=attempt_dir,
+                            self_check=index == 0,
+                            info=info,
+                            sleep=sleep,
+                            clock=clock,
+                        )
                     except CaptureError as exc:
                         if index == 0 and exc.code == TV_INTERNALS_CHANGED:
                             raise
-                        result = {"symbol": code, "safeName": safe_name(code), "status": "failed",
-                                  "attempt": attempt, "error": exc.to_dict()}
+                        result = {
+                            "symbol": code,
+                            "safeName": safe_name(code),
+                            "status": "failed",
+                            "attempt": attempt,
+                            "error": exc.to_dict(),
+                        }
                     results[code] = result
                     progress.record(result)
             finally:
@@ -3121,8 +3506,10 @@ def run_capture(request: CaptureRequest, config: Config, *, job_id: str, desktop
             stopped = CaptureError(INTERNAL_ERROR, f"{type(exc).__name__}: {exc}", {})
         finally:
             desktop.stop()
-        symbols = [results.get(code) or {"symbol": code, "safeName": safe_name(code), "status": "pending"}
-                   for code in request.symbols]
+        symbols = [
+            results.get(code) or {"symbol": code, "safeName": safe_name(code), "status": "pending"}
+            for code in request.symbols
+        ]
         totals = {
             "requested": len(symbols),
             "succeeded": sum(1 for s in symbols if s["status"] == "ok"),
@@ -3132,42 +3519,84 @@ def run_capture(request: CaptureRequest, config: Config, *, job_id: str, desktop
         state = "stopped" if stopped else "finished"
         error = stopped.to_dict() if stopped else None
         manifest = {
-            "schemaVersion": 1, "tool": {"name": TOOL_NAME, "version": __version__}, "jobId": job_id,
-            "state": state, "error": error, "startedAt": started_at, "finishedAt": stamp(), "attempts": attempt,
-            "layout": request.layout, "timeframe": request.timeframe,
+            "schemaVersion": 1,
+            "tool": {"name": TOOL_NAME, "version": __version__},
+            "jobId": job_id,
+            "state": state,
+            "error": error,
+            "startedAt": started_at,
+            "finishedAt": stamp(),
+            "attempts": attempt,
+            "layout": request.layout,
+            "timeframe": request.timeframe,
             "viewport": asdict(request.viewport) if request.viewport else None,
-            "desktop": {"version": info.version if info else None, "browser": info.browser if info else None,
-                        "previousVersion": previous_version},
-            "desktopVersionChanged": changed, "totals": totals, "symbols": symbols,
+            "desktop": {
+                "version": info.version if info else None,
+                "browser": info.browser if info else None,
+                "previousVersion": previous_version,
+            },
+            "desktopVersionChanged": changed,
+            "totals": totals,
+            "symbols": symbols,
         }
-        write_json_new(attempt_dir / "attempt.json", {"attempt": attempt, "jobId": job_id, "symbols": todo,
-                                                      "results": [results[c] for c in todo if c in results],
-                                                      "error": error})
+        write_json_new(
+            attempt_dir / "attempt.json",
+            {
+                "attempt": attempt,
+                "jobId": job_id,
+                "symbols": todo,
+                "results": [results[c] for c in todo if c in results],
+                "error": error,
+            },
+        )
         if request.retry_failed:
             replace_json(out / "capture-manifest.json", manifest)
         else:
             write_json_new(out / "capture-manifest.json", manifest)
         progress.update(state="failed" if stopped else "finished", current=None, error=error)
-        failures = [{"symbol": s["symbol"], "code": s["error"]["code"], "message": s["error"]["message"]}
-                    for s in symbols if s["status"] == "failed"]
-        return {"jobId": job_id, "outputDir": str(out), "state": state, "totals": totals, "failures": failures,
-                "desktopVersionChanged": changed, "error": error}
+        failures = [
+            {"symbol": s["symbol"], "code": s["error"]["code"], "message": s["error"]["message"]}
+            for s in symbols
+            if s["status"] == "failed"
+        ]
+        return {
+            "jobId": job_id,
+            "outputDir": str(out),
+            "state": state,
+            "totals": totals,
+            "failures": failures,
+            "desktopVersionChanged": changed,
+            "error": error,
+        }
 
 
 def _restore(driver: ChartDriver, original: Any, request: CaptureRequest) -> None:
     """Put the chart back on the symbol and resolution it showed before the batch."""
     if isinstance(original, dict) and original.get("symbol"):
         with contextlib.suppress(CaptureError):
-            driver.run("switch", {"symbol": original["symbol"], "timeframe": original.get("resolution") or request.timeframe},
-                       timeout=40.0)
+            driver.run(
+                "switch",
+                {"symbol": original["symbol"], "timeframe": original.get("resolution") or request.timeframe},
+                timeout=40.0,
+            )
     if request.viewport is not None:
         with contextlib.suppress(CaptureError):
             driver.clear_viewport()
 
 
-def capture_symbol(driver: ChartDriver, request: CaptureRequest, out: Path, code: str, *, attempt: int,
-                   attempt_dir: Path, self_check: bool, info: DesktopInfo, sleep: Callable[[float], None],
-                   clock: Callable[[], float]) -> dict[str, Any]:
+def capture_symbol(
+    driver: ChartDriver,
+    request: CaptureRequest,
+    out: Path,
+    code: str,
+    *,
+    attempt: int,
+    attempt_dir: Path,
+    self_check: bool,
+    info: DesktopInfo,
+    sleep: Callable[[float], None],
+    clock: Callable[[], float],
+) -> dict[str, Any]:
     started_at = stamp()
     before = ReadySnapshot.from_page(driver.run("ready"))
     switched = driver.run("switch", {"symbol": code, "timeframe": request.timeframe}, timeout=40.0) or {}
@@ -3176,8 +3605,14 @@ def capture_symbol(driver: ChartDriver, request: CaptureRequest, out: Path, code
         raise CaptureError(SYMBOL_NOT_FOUND, "the chart did not switch to this symbol", {"after": after})
     switched_at = stamp()
     verdict, snapshot, polls, waited = wait_until_ready(
-        lambda: ReadySnapshot.from_page(driver.run("ready")), target=code, timeframe=request.timeframe,
-        before_switch=before, timeout=request.ready_timeout_sec, sleep=sleep, clock=clock)
+        lambda: ReadySnapshot.from_page(driver.run("ready")),
+        target=code,
+        timeframe=request.timeframe,
+        before_switch=before,
+        timeout=request.ready_timeout_sec,
+        sleep=sleep,
+        clock=clock,
+    )
     ready_at = stamp()
     extracted = driver.run("extract", timeout=120.0) or {}
     extracted_at = stamp()
@@ -3194,14 +3629,27 @@ def capture_symbol(driver: ChartDriver, request: CaptureRequest, out: Path, code
     names = [str(s.get("name") or "") for s in studies]
     missing = [want for want in request.required_studies if not any(want in name for name in names)]
     if self_check:
-        failed = [name for name, ok in (("identity", bool(identity.get("symbol"))), ("studies", bool(studies)),
-                                        ("requiredStudies", not missing), ("series", bool(series.get("rows"))),
-                                        ("screenshot", size is not None)) if not ok]
+        failed = [
+            name
+            for name, ok in (
+                ("identity", bool(identity.get("symbol"))),
+                ("studies", bool(studies)),
+                ("requiredStudies", not missing),
+                ("series", bool(series.get("rows"))),
+                ("screenshot", size is not None),
+            )
+            if not ok
+        ]
         if failed:
-            raise CaptureError(TV_INTERNALS_CHANGED, "the self-check on the first symbol failed",
-                               {"failedChecks": failed, "missingStudies": missing})
+            raise CaptureError(
+                TV_INTERNALS_CHANGED,
+                "the self-check on the first symbol failed",
+                {"failedChecks": failed, "missingStudies": missing},
+            )
     if identity.get("symbol") != code:
-        raise CaptureError(SYMBOL_NOT_FOUND, "the extracted chart is not this symbol", {"symbol": identity.get("symbol")})
+        raise CaptureError(
+            SYMBOL_NOT_FOUND, "the extracted chart is not this symbol", {"symbol": identity.get("symbol")}
+        )
     if missing:
         raise CaptureError(STUDY_MISSING, "required studies are missing", {"missing": missing})
     if size is None:
@@ -3217,31 +3665,64 @@ def capture_symbol(driver: ChartDriver, request: CaptureRequest, out: Path, code
     try:
         csv_bytes = str(series.get("csv") or "").encode("utf-8")
         data = {
-            "schemaVersion": 1, "identity": identity, "studies": studies, "drawings": extracted.get("drawings") or [],
+            "schemaVersion": 1,
+            "identity": identity,
+            "studies": studies,
+            "drawings": extracted.get("drawings") or [],
             "readiness": {
-                "polls": polls, "waitedSec": round(waited, 3), "lastBarTime": snapshot.last_bar_time,
+                "polls": polls,
+                "waitedSec": round(waited, 3),
+                "lastBarTime": snapshot.last_bar_time,
                 "unchangedAfterSwitch": list(verdict.unchanged),
-                "studies": [{"id": s.id, "name": s.name, "status": s.status, "lastTime": s.last_time, "digest": s.digest}
-                            for s in snapshot.studies],
+                "studies": [
+                    {
+                        "id": s.id,
+                        "name": s.name,
+                        "status": s.status,
+                        "lastTime": s.last_time,
+                        "digest": s.digest,
+                    }
+                    for s in snapshot.studies
+                ],
             },
         }
         data_bytes = dumps_json(data)
         files = {
-            "image.png": {"sha256": write_new(partial / "image.png", png), "bytes": len(png),
-                          "width": size[0], "height": size[1]},
-            "chart.csv": {"sha256": write_new(partial / "chart.csv", csv_bytes), "bytes": len(csv_bytes),
-                          "rows": series.get("rows"), "columns": series.get("columns")},
+            "image.png": {
+                "sha256": write_new(partial / "image.png", png),
+                "bytes": len(png),
+                "width": size[0],
+                "height": size[1],
+            },
+            "chart.csv": {
+                "sha256": write_new(partial / "chart.csv", csv_bytes),
+                "bytes": len(csv_bytes),
+                "rows": series.get("rows"),
+                "columns": series.get("columns"),
+            },
             "data.json": {"sha256": write_new(partial / "data.json", data_bytes), "bytes": len(data_bytes)},
         }
         finished_at = stamp()
         capture = {
-            "schemaVersion": 1, "tool": {"name": TOOL_NAME, "version": __version__},
+            "schemaVersion": 1,
+            "tool": {"name": TOOL_NAME, "version": __version__},
             "desktop": {"version": info.version, "browser": info.browser},
-            "captureMethod": CAPTURE_METHOD, "pngSource": PNG_SOURCE, "csvSource": CSV_SOURCE,
-            "symbol": code, "layout": request.layout, "timeframe": request.timeframe, "attempt": attempt,
+            "captureMethod": CAPTURE_METHOD,
+            "pngSource": PNG_SOURCE,
+            "csvSource": CSV_SOURCE,
+            "symbol": code,
+            "layout": request.layout,
+            "timeframe": request.timeframe,
+            "attempt": attempt,
             "viewport": asdict(request.viewport) if request.viewport else None,
-            "times": {"startedAt": started_at, "switchedAt": switched_at, "readyAt": ready_at,
-                      "extractedAt": extracted_at, "screenshotAt": screenshot_at, "finishedAt": finished_at},
+            "times": {
+                "startedAt": started_at,
+                "switchedAt": switched_at,
+                "readyAt": ready_at,
+                "extractedAt": extracted_at,
+                "screenshotAt": screenshot_at,
+                "finishedAt": finished_at,
+            },
             "files": files,
         }
         capture_sha = write_json_new(partial / "capture.json", capture)
@@ -3250,8 +3731,14 @@ def capture_symbol(driver: ChartDriver, request: CaptureRequest, out: Path, code
         if partial.exists():
             os.rename(partial, attempt_dir / f"{name}.failed")  # keep the evidence; never delete
         raise
-    return {"symbol": code, "safeName": name, "status": "ok", "attempt": attempt, "captureSha256": capture_sha,
-            "finishedAt": finished_at}
+    return {
+        "symbol": code,
+        "safeName": name,
+        "status": "ok",
+        "attempt": attempt,
+        "captureSha256": capture_sha,
+        "finishedAt": finished_at,
+    }
 ```
 
 - [ ] **Step 6: 确认通过**
@@ -3309,8 +3796,12 @@ def stub_python(tmp_path):
 
 
 def request(config, name="batch"):
-    return CaptureRequest(layout="Layout01", symbols=("BINANCE:AAAUSDT.P",), timeframe="1D",
-                          output_dir=str(config.output_root / name))
+    return CaptureRequest(
+        layout="Layout01",
+        symbols=("BINANCE:AAAUSDT.P",),
+        timeframe="1D",
+        output_dir=str(config.output_root / name),
+    )
 
 
 def wait_for(config, job_id, state, seconds=5.0):
@@ -3351,7 +3842,11 @@ def test_status_by_output_dir_reads_job_json(config):
 
 
 def test_status_rejects_bad_and_unknown_jobs(config):
-    for kwargs, code in (({"job_id": "../x"}, "INVALID_ARGUMENT"), ({"job_id": "b" * 32}, "NOT_FOUND"), ({}, "INVALID_ARGUMENT")):
+    for kwargs, code in (
+        ({"job_id": "../x"}, "INVALID_ARGUMENT"),
+        ({"job_id": "b" * 32}, "NOT_FOUND"),
+        ({}, "INVALID_ARGUMENT"),
+    ):
         with pytest.raises(CaptureError) as err:
             jobs.status(config, **kwargs)
         assert err.value.code == code
@@ -3373,7 +3868,9 @@ def test_retry_needs_failed_or_pending_symbols(config, stub_python):
     with pytest.raises(CaptureError) as err:
         jobs.retry(config, str(out), python=stub_python)
     assert err.value.code == "NOT_FOUND"
-    write_json_new(out / "capture-manifest.json", {"symbols": [{"symbol": "BINANCE:AAAUSDT.P", "status": "ok"}]})
+    write_json_new(
+        out / "capture-manifest.json", {"symbols": [{"symbol": "BINANCE:AAAUSDT.P", "status": "ok"}]}
+    )
     with pytest.raises(CaptureError) as err:
         jobs.retry(config, str(out), python=stub_python)
     assert err.value.code == "NOT_FOUND"
@@ -3428,8 +3925,12 @@ def test_symbol_data_defaults(batch):
     config, out = batch
     data = results.symbol_data(config, str(out), SYMBOL)
     assert set(data) == {"symbol", "capture", "identity", "studies", "drawings"}
-    assert data["studies"][0] == {"name": "Alpha", "id": "s1", "tables": [{"id": "0", "rows": [["Head", None]]}],
-                                  "lastValues": [["Quarter", 11.25]]}
+    assert data["studies"][0] == {
+        "name": "Alpha",
+        "id": "s1",
+        "tables": [{"id": "0", "rows": [["Head", None]]}],
+        "lastValues": [["Quarter", 11.25]],
+    }
     assert data["capture"]["captureMethod"] == "CDP_DESKTOP"
 
 
@@ -3437,15 +3938,21 @@ def test_symbol_data_parts_and_series(batch):
     config, out = batch
     data = results.symbol_data(config, str(out), SYMBOL, parts=["labels"], series_last=1)
     assert data["studies"][0]["labels"] == [{"text": "9.5", "time": 2000}]
-    assert data["series"] == {"columns": ["time", "open", "high", "low", "close"], "rows": [["2000", "1.5", "2.5", "1", "2"]]}
+    assert data["series"] == {
+        "columns": ["time", "open", "high", "low", "close"],
+        "rows": [["2000", "1.5", "2.5", "1", "2"]],
+    }
     assert "identity" not in data
 
 
-@pytest.mark.parametrize("kwargs, code", [
-    ({"symbol": SYMBOL, "parts": ["secret"]}, "INVALID_ARGUMENT"),
-    ({"symbol": SYMBOL, "series_last": 0}, "INVALID_ARGUMENT"),
-    ({"symbol": "BINANCE:ZZZUSDT.P"}, "NOT_FOUND"),
-])
+@pytest.mark.parametrize(
+    "kwargs, code",
+    [
+        ({"symbol": SYMBOL, "parts": ["secret"]}, "INVALID_ARGUMENT"),
+        ({"symbol": SYMBOL, "series_last": 0}, "INVALID_ARGUMENT"),
+        ({"symbol": "BINANCE:ZZZUSDT.P"}, "NOT_FOUND"),
+    ],
+)
 def test_symbol_data_rejects_bad_requests(batch, kwargs, code):
     config, out = batch
     with pytest.raises(CaptureError) as err:
@@ -3519,8 +4026,12 @@ def start(config: Config, request: CaptureRequest, *, python: str | None = None)
     out = resolve_inside_root(config.output_root, request.output_dir)
     if request.retry_failed:
         manifest = out / "capture-manifest.json"
-        if not manifest.is_file() or all(s.get("status") == "ok" for s in read_json(manifest).get("symbols", [])):
-            raise CaptureError(NOT_FOUND, "this batch has no failed or pending symbols", {"output_dir": str(out)})
+        if not manifest.is_file() or all(
+            s.get("status") == "ok" for s in read_json(manifest).get("symbols", [])
+        ):
+            raise CaptureError(
+                NOT_FOUND, "this batch has no failed or pending symbols", {"output_dir": str(out)}
+            )
     elif out.exists():
         raise CaptureError(OUTPUT_EXISTS, "output_dir already exists", {"output_dir": str(out)})
     if lock_is_held(config.output_root):
@@ -3532,12 +4043,17 @@ def start(config: Config, request: CaptureRequest, *, python: str | None = None)
     try:
         process = subprocess.Popen(
             [python or sys.executable, "-m", "tradingview_capture_mcp.cli", "run-job", "--job-id", job_id],
-            stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True,
+            stdin=subprocess.DEVNULL,
+            stdout=log,
+            stderr=log,
+            start_new_session=True,
         )
     finally:
         os.close(log)
-    write_json_new(folder / f"{job_id}.json", {"jobId": job_id, "pid": process.pid, "outputDir": str(out),
-                                               "startedAt": stamp()})
+    write_json_new(
+        folder / f"{job_id}.json",
+        {"jobId": job_id, "pid": process.pid, "outputDir": str(out), "startedAt": stamp()},
+    )
     return {"jobId": job_id, "outputDir": str(out), "pid": process.pid}
 
 
@@ -3593,8 +4109,12 @@ def status(config: Config, *, job_id: str | None = None, output_dir: str | None 
 
 def run_job(config: Config, job_id: str) -> dict[str, Any]:
     """Body of the background process that start() launches."""
-    request = CaptureRequest.from_dict(read_json(config.output_root / JOBS_DIR / f"{_check_job_id(job_id)}.request.json"))
-    return run_capture(request, config, job_id=job_id, desktop=RealDesktop(config, request.layout), pid=os.getpid())
+    request = CaptureRequest.from_dict(
+        read_json(config.output_root / JOBS_DIR / f"{_check_job_id(job_id)}.request.json")
+    )
+    return run_capture(
+        request, config, job_id=job_id, desktop=RealDesktop(config, request.layout), pid=os.getpid()
+    )
 ```
 
 <!-- file: src/tradingview_capture_mcp/results.py -->
@@ -3635,27 +4155,42 @@ def _symbol_dir(config: Config, output_dir: str, symbol: str) -> Path:
     return folder
 
 
-def symbol_data(config: Config, output_dir: str, symbol: str, parts: list[str] | None = None,
-                series_last: int | None = None) -> dict[str, Any]:
+def symbol_data(
+    config: Config,
+    output_dir: str,
+    symbol: str,
+    parts: list[str] | None = None,
+    series_last: int | None = None,
+) -> dict[str, Any]:
     wanted = tuple(parts) if parts else DEFAULT_PARTS
     unknown = [p for p in wanted if p not in ALL_PARTS]
     if unknown:
-        raise CaptureError(INVALID_ARGUMENT, "unknown parts", {"unknown": unknown, "allowed": list(ALL_PARTS)})
+        raise CaptureError(
+            INVALID_ARGUMENT, "unknown parts", {"unknown": unknown, "allowed": list(ALL_PARTS)}
+        )
     if series_last is not None and not 1 <= series_last <= MAX_SERIES_ROWS:
         raise CaptureError(INVALID_ARGUMENT, f"series_last must be between 1 and {MAX_SERIES_ROWS}", {})
     folder = _symbol_dir(config, output_dir, symbol)
     data = read_json(folder / "data.json")
     capture = read_json(folder / "capture.json")
-    result: dict[str, Any] = {"symbol": symbol, "capture": {
-        "capturedAt": (capture.get("times") or {}).get("finishedAt"), "captureMethod": capture.get("captureMethod"),
-        "desktopVersion": (capture.get("desktop") or {}).get("version"), "files": capture.get("files")}}
+    result: dict[str, Any] = {
+        "symbol": symbol,
+        "capture": {
+            "capturedAt": (capture.get("times") or {}).get("finishedAt"),
+            "captureMethod": capture.get("captureMethod"),
+            "desktopVersion": (capture.get("desktop") or {}).get("version"),
+            "files": capture.get("files"),
+        },
+    }
     for part in ("identity", "drawings", "readiness"):
         if part in wanted:
             result[part] = data.get(part)
     study_parts = [p for p in STUDY_PARTS if p in wanted]
     if study_parts:
-        result["studies"] = [{"name": s.get("name"), "id": s.get("id"), **{p: s.get(p) for p in study_parts}}
-                             for s in data.get("studies", [])]
+        result["studies"] = [
+            {"name": s.get("name"), "id": s.get("id"), **{p: s.get(p) for p in study_parts}}
+            for s in data.get("studies", [])
+        ]
     if series_last:
         rows = list(csv.reader(io.StringIO((folder / "chart.csv").read_text(encoding="utf-8"))))
         result["series"] = {"columns": rows[0] if rows else [], "rows": rows[1:][-series_last:]}
@@ -3666,8 +4201,9 @@ def crop(config: Config, output_dir: str, symbol: str, x: int, y: int, width: in
     return crop_png(_symbol_dir(config, output_dir, symbol) / "image.png", x, y, width, height)
 
 
-def save_crop(config: Config, output_dir: str, symbol: str, box: tuple[int, int, int, int],
-              destination: str) -> dict[str, Any]:
+def save_crop(
+    config: Config, output_dir: str, symbol: str, box: tuple[int, int, int, int], destination: str
+) -> dict[str, Any]:
     data = crop(config, output_dir, symbol, *box)
     target = resolve_inside_root(config.output_root, destination)
     return {"path": str(target), "sha256": write_new(target, data), "bytes": len(data)}
@@ -3733,18 +4269,51 @@ def test_status_summary_and_read(root, capsys):
 def test_crop_writes_a_private_file(root, capsys):
     out = root / "day"
     make_batch(out, SYMBOL)
-    code, payload = run(capsys, "crop", "--output-dir", str(out), "--symbol", SYMBOL, "--box", "0,0,4,4",
-                        "--out", str(out / "c.png"))
+    code, payload = run(
+        capsys,
+        "crop",
+        "--output-dir",
+        str(out),
+        "--symbol",
+        SYMBOL,
+        "--box",
+        "0,0,4,4",
+        "--out",
+        str(out / "c.png"),
+    )
     assert code == 0 and payload["bytes"] > 0
 
 
-@pytest.mark.parametrize("argv", [
-    ["capture", "--layout", "../bad", "--symbol", SYMBOL, "--output-dir", "{root}/x"],
-    ["capture", "--layout", "Layout01", "--symbol", SYMBOL, "--output-dir", "{root}/x", "--viewport", "10x10"],
-    ["capture", "--layout", "Layout01", "--symbol", SYMBOL, "--output-dir", "{root}/x", "--viewport", "wide"],
-    ["crop", "--output-dir", "{root}/day", "--symbol", SYMBOL, "--box", "1,2,3", "--out", "{root}/c.png"],
-    ["status", "--job-id", "c" * 31],
-])
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["capture", "--layout", "../bad", "--symbol", SYMBOL, "--output-dir", "{root}/x"],
+        [
+            "capture",
+            "--layout",
+            "Layout01",
+            "--symbol",
+            SYMBOL,
+            "--output-dir",
+            "{root}/x",
+            "--viewport",
+            "10x10",
+        ],
+        [
+            "capture",
+            "--layout",
+            "Layout01",
+            "--symbol",
+            SYMBOL,
+            "--output-dir",
+            "{root}/x",
+            "--viewport",
+            "wide",
+        ],
+        ["crop", "--output-dir", "{root}/day", "--symbol", SYMBOL, "--box", "1,2,3", "--out", "{root}/c.png"],
+        ["status", "--job-id", "c" * 31],
+    ],
+)
 def test_errors_are_json_with_exit_code_2(root, capsys, argv):
     code, payload = run(capsys, *[a.format(root=root) for a in argv])
     assert code == 2
@@ -3798,7 +4367,9 @@ def _box(value: str) -> tuple[int, int, int, int]:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="tradingview-capture", description="Capture TradingView Desktop charts for AI agents.")
+    parser = argparse.ArgumentParser(
+        prog="tradingview-capture", description="Capture TradingView Desktop charts for AI agents."
+    )
     sub = parser.add_subparsers(dest="command", required=True)
     cap = sub.add_parser("capture", help="start a batch (in the background unless --foreground)")
     cap.add_argument("--output-dir", required=True)
@@ -3817,7 +4388,9 @@ def build_parser() -> argparse.ArgumentParser:
     which = status.add_mutually_exclusive_group(required=True)
     which.add_argument("--job-id")
     which.add_argument("--output-dir")
-    status.add_argument("--summary", action="store_true", help="print the batch manifest (needs --output-dir)")
+    status.add_argument(
+        "--summary", action="store_true", help="print the batch manifest (needs --output-dir)"
+    )
     read = sub.add_parser("read", help="structured data for one symbol")
     read.add_argument("--output-dir", required=True)
     read.add_argument("--symbol", required=True)
@@ -3843,13 +4416,20 @@ def _capture(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         if args.symbols_file:
             lines = Path(args.symbols_file).read_text(encoding="utf-8").splitlines()
             symbols += [line.strip() for line in lines if line.strip()]
-        request = CaptureRequest(layout=args.layout or "", symbols=tuple(symbols), timeframe=args.timeframe,
-                                 output_dir=args.output_dir, required_studies=tuple(args.required_study),
-                                 viewport=_viewport(args.viewport), ready_timeout_sec=args.ready_timeout)
+        request = CaptureRequest(
+            layout=args.layout or "",
+            symbols=tuple(symbols),
+            timeframe=args.timeframe,
+            output_dir=args.output_dir,
+            required_studies=tuple(args.required_study),
+            viewport=_viewport(args.viewport),
+            ready_timeout_sec=args.ready_timeout,
+        )
     if not args.foreground:
         return jobs.start(config, request), 0
-    summary = run_capture(request, config, job_id=uuid.uuid4().hex, desktop=RealDesktop(config, request.layout),
-                          pid=os.getpid())
+    summary = run_capture(
+        request, config, job_id=uuid.uuid4().hex, desktop=RealDesktop(config, request.layout), pid=os.getpid()
+    )
     return summary, 0 if summary["state"] == "finished" else 1
 
 
@@ -3867,8 +4447,9 @@ def _dispatch(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             return results.batch_summary(config, args.output_dir), 0
         return jobs.status(config, job_id=args.job_id, output_dir=args.output_dir), 0
     if args.command == "read":
-        return results.symbol_data(config, args.output_dir, args.symbol, parts=args.part,
-                                   series_last=args.series_last), 0
+        return results.symbol_data(
+            config, args.output_dir, args.symbol, parts=args.part, series_last=args.series_last
+        ), 0
     if args.command == "crop":
         return results.save_crop(config, args.output_dir, args.symbol, _box(args.box), args.out), 0
     if args.command == "doctor":
@@ -3947,8 +4528,15 @@ def call(name, arguments):
 
 def test_the_seven_tools_are_listed():
     tools = asyncio.run(app.list_tools())
-    assert {tool.name for tool in tools} == {"capture_start", "capture_retry", "capture_status", "batch_summary",
-                                            "symbol_data", "image_crop", "diagnose"}
+    assert {tool.name for tool in tools} == {
+        "capture_start",
+        "capture_retry",
+        "capture_status",
+        "batch_summary",
+        "symbol_data",
+        "image_crop",
+        "diagnose",
+    }
 
 
 def test_batch_summary_and_symbol_data(root):
@@ -3956,14 +4544,18 @@ def test_batch_summary_and_symbol_data(root):
     make_batch(out, SYMBOL)
     summary = json.loads(call("batch_summary", {"output_dir": str(out)}).content[0].text)
     assert summary["state"] == "finished"
-    data = json.loads(call("symbol_data", {"output_dir": str(out), "symbol": SYMBOL, "parts": ["identity"]}).content[0].text)
+    data = json.loads(
+        call("symbol_data", {"output_dir": str(out), "symbol": SYMBOL, "parts": ["identity"]}).content[0].text
+    )
     assert data["identity"]["resolution"] == "1D"
 
 
 def test_image_crop_returns_an_image(root):
     out = root / "day"
     make_batch(out, SYMBOL)
-    result = call("image_crop", {"output_dir": str(out), "symbol": SYMBOL, "x": 0, "y": 0, "width": 8, "height": 8})
+    result = call(
+        "image_crop", {"output_dir": str(out), "symbol": SYMBOL, "x": 0, "y": 0, "width": 8, "height": 8}
+    )
     assert (result.content[0].type, result.content[0].mime_type) == ("image", "image/png")
 
 
@@ -4026,21 +4618,36 @@ def _coded(fn: F) -> F:
     return wrapper  # type: ignore[return-value]
 
 
-@app.tool(description="Start capturing TradingView codes from one TradingView Desktop layout into output_dir. "
-                      "Returns a job id at once.")
+@app.tool(
+    description="Start capturing TradingView codes from one TradingView Desktop layout into output_dir. "
+    "Returns a job id at once."
+)
 @_coded
-def capture_start(layout: str, symbols: list[str], output_dir: str, timeframe: str = "1D",
-                  required_studies: list[str] | None = None, viewport_width: int | None = None,
-                  viewport_height: int | None = None, viewport_scale: float = 1.0,
-                  ready_timeout_sec: float = 60.0) -> dict[str, Any]:
+def capture_start(
+    layout: str,
+    symbols: list[str],
+    output_dir: str,
+    timeframe: str = "1D",
+    required_studies: list[str] | None = None,
+    viewport_width: int | None = None,
+    viewport_height: int | None = None,
+    viewport_scale: float = 1.0,
+    ready_timeout_sec: float = 60.0,
+) -> dict[str, Any]:
     viewport = None
     if viewport_width is not None or viewport_height is not None:
         if viewport_width is None or viewport_height is None:
             raise CaptureError(INVALID_ARGUMENT, "pass both viewport_width and viewport_height", {})
         viewport = Viewport(viewport_width, viewport_height, viewport_scale)
-    request = CaptureRequest(layout=layout, symbols=tuple(symbols), timeframe=timeframe, output_dir=output_dir,
-                             required_studies=tuple(required_studies or ()), viewport=viewport,
-                             ready_timeout_sec=ready_timeout_sec)
+    request = CaptureRequest(
+        layout=layout,
+        symbols=tuple(symbols),
+        timeframe=timeframe,
+        output_dir=output_dir,
+        required_studies=tuple(required_studies or ()),
+        viewport=viewport,
+        ready_timeout_sec=ready_timeout_sec,
+    )
     return jobs.start(load_config(), request)
 
 
@@ -4062,12 +4669,15 @@ def batch_summary(output_dir: str) -> dict[str, Any]:
     return results.batch_summary(load_config(), output_dir)
 
 
-@app.tool(description="Structured data for one symbol. parts: identity, tables, labels, lines, boxes, lastValues, "
-                      "drawings, readiness, inputs (default identity, tables, lastValues, drawings). "
-                      "series_last adds the last N CSV rows.")
+@app.tool(
+    description="Structured data for one symbol. parts: identity, tables, labels, lines, boxes, lastValues, "
+    "drawings, readiness, inputs (default identity, tables, lastValues, drawings). "
+    "series_last adds the last N CSV rows."
+)
 @_coded
-def symbol_data(output_dir: str, symbol: str, parts: list[str] | None = None,
-                series_last: int | None = None) -> dict[str, Any]:
+def symbol_data(
+    output_dir: str, symbol: str, parts: list[str] | None = None, series_last: int | None = None
+) -> dict[str, Any]:
     return results.symbol_data(load_config(), output_dir, symbol, parts=parts, series_last=series_last)
 
 
@@ -4077,8 +4687,10 @@ def image_crop(output_dir: str, symbol: str, x: int, y: int, width: int, height:
     return Image(data=results.crop(load_config(), output_dir, symbol, x, y, width, height), format="png")
 
 
-@app.tool(description="Start TradingView Desktop briefly and report which internal paths a capture needs are "
-                      "available. Returns no chart contents.")
+@app.tool(
+    description="Start TradingView Desktop briefly and report which internal paths a capture needs are "
+    "available. Returns no chart contents."
+)
 @_coded
 def diagnose(layout: str) -> dict[str, Any]:
     return diagnostics.run_doctor(load_config(), layout)
@@ -4131,10 +4743,14 @@ def repo(tmp_path):
 
 
 def scan(repo, *args, terms=None):
-    env = {"PATH": "/usr/bin:/bin:/usr/sbin:/sbin", "HOME": str(repo),
-           "TRADINGVIEW_CAPTURE_PRIVATE_TERMS": str(terms or repo / "none.txt")}
-    return subprocess.run(["bash", "scripts/check-private-content.sh", *args], cwd=repo, env=env,
-                          capture_output=True, text=True)
+    env = {
+        "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+        "HOME": str(repo),
+        "TRADINGVIEW_CAPTURE_PRIVATE_TERMS": str(terms or repo / "none.txt"),
+    }
+    return subprocess.run(
+        ["bash", "scripts/check-private-content.sh", *args], cwd=repo, env=env, capture_output=True, text=True
+    )
 
 
 def add(repo, name, text):
@@ -4147,11 +4763,14 @@ def test_a_clean_repository_passes(repo):
     assert scan(repo).returncode == 0
 
 
-@pytest.mark.parametrize("text, category", [
-    ("path = '/Users/someone/project'\n", "local-path"),  # private-content: allow
-    ("server = '10.1.2.3'\n", "ip-address"),  # private-content: allow
-    ("token = 'ghp_" + "a" * 36 + "'\n", "token"),
-])
+@pytest.mark.parametrize(
+    "text, category",
+    [
+        ("path = '/Users/someone/project'\n", "local-path"),  # private-content: allow
+        ("server = '10.1.2.3'\n", "ip-address"),  # private-content: allow
+        ("token = 'ghp_" + "a" * 36 + "'\n", "token"),
+    ],
+)
 def test_findings_fail_the_scan(repo, text, category):
     add(repo, "bad.py", text)
     result = scan(repo)
@@ -4408,8 +5027,12 @@ def test_capture_one_symbol_end_to_end():
     symbol = _env("TRADINGVIEW_CAPTURE_LIVE_SYMBOL")
     studies = tuple(s for s in os.environ.get("TRADINGVIEW_CAPTURE_LIVE_STUDIES", "").split(",") if s)
     out = Path(_env("TRADINGVIEW_CAPTURE_LIVE_PARENT")) / f"live-{os.getpid()}"
-    request = CaptureRequest(layout=layout, symbols=(symbol,), timeframe="1D", output_dir=str(out), required_studies=studies)
-    summary = run_capture(request, config, job_id="f" * 32, desktop=RealDesktop(config, layout), pid=os.getpid())
+    request = CaptureRequest(
+        layout=layout, symbols=(symbol,), timeframe="1D", output_dir=str(out), required_studies=studies
+    )
+    summary = run_capture(
+        request, config, job_id="f" * 32, desktop=RealDesktop(config, layout), pid=os.getpid()
+    )
     assert summary["state"] == "finished", summary
     assert summary["totals"]["succeeded"] == 1, summary
     folder = out / "raw" / safe_name(symbol)
@@ -4529,13 +5152,17 @@ def compare(a: Path, b: Path, skip_last: int = 1) -> dict[str, Any]:
             value_a = row_a[i] if i < len(row_a) else ""
             value_b = row_b[i] if i < len(row_b) else ""
             if value_a != value_b:
-                entry = mismatches.setdefault(f"{i + 1}:{header_a[i]}",
-                                              {"count": 0, "first": {"time": time, "a": value_a, "b": value_b}})
+                entry = mismatches.setdefault(
+                    f"{i + 1}:{header_a[i]}",
+                    {"count": 0, "first": {"time": time, "a": value_a, "b": value_b}},
+                )
                 entry["count"] += 1
     return {
         "headerEqual": header_a == header_b,
         "columns": [len(header_a), len(header_b)],
-        "headerDiff": [[i + 1, x, y] for i, (x, y) in enumerate(zip(header_a, header_b, strict=False)) if x != y],
+        "headerDiff": [
+            [i + 1, x, y] for i, (x, y) in enumerate(zip(header_a, header_b, strict=False)) if x != y
+        ],
         "rows": [len(rows_a), len(rows_b)],
         "overlap": len(shared),
         "checked": len(checked),
@@ -4547,7 +5174,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Compare two TradingView-style CSV exports by time.")
     parser.add_argument("a", type=Path)
     parser.add_argument("b", type=Path)
-    parser.add_argument("--skip-last", type=int, default=1, help="ignore the newest N shared rows (the forming bar)")
+    parser.add_argument(
+        "--skip-last", type=int, default=1, help="ignore the newest N shared rows (the forming bar)"
+    )
     args = parser.parse_args(argv)
     report = compare(args.a, args.b, args.skip_last)
     print(json.dumps(report, ensure_ascii=False, indent=2))
