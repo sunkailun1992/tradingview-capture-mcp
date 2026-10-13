@@ -46,4 +46,5 @@ ignore = ["S603", "S607"]
 testpaths = ["tests"]
 pythonpath = ["tests"]
 addopts = "-m 'not live'"
+filterwarnings = ["error"]
 markers = ["live: needs a logged-in TradingView Desktop; run with TRADINGVIEW_CAPTURE_LIVE=1 pytest -m live"]
