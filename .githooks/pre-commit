@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Enable once per clone with: git config core.hooksPath .githooks
+exec bash scripts/check-private-content.sh --staged

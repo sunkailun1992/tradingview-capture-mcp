@@ -1,0 +1,10 @@
+# Code owners are requested for review automatically. High-risk paths are listed explicitly so
+# they stay covered when more maintainers join.
+*                                            @sunkailun1992
+/AGENTS.md                                   @sunkailun1992
+/docs/ai-coding/                             @sunkailun1992
+/src/tradingview_capture_mcp/page/           @sunkailun1992
+/src/tradingview_capture_mcp/desktop.py      @sunkailun1992
+/src/tradingview_capture_mcp/store.py        @sunkailun1992
+/scripts/check-private-content.sh            @sunkailun1992
+/.github/                                    @sunkailun1992

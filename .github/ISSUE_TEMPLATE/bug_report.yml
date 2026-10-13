@@ -1,0 +1,33 @@
+name: 缺陷报告 / Bug report
+description: 采集失败、输出不对或工具行为与文档不符
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请不要贴真实布局 ID、TradingView 用户名、私有指标名、表格内容、图表截图、本机路径或令牌。安全问题请走 SECURITY.md 的私密渠道。
+        Please do not paste real layout IDs, usernames, private indicator names, table contents, chart screenshots, local paths or tokens. Report security problems privately (see SECURITY.md).
+  - type: input
+    id: version
+    attributes:
+      label: 工具版本与 TradingView 桌面版版本 / Tool and Desktop versions
+      placeholder: "0.1.0 / TVDesktop 3.4.1"
+    validations:
+      required: true
+  - type: input
+    id: code
+    attributes:
+      label: 错误码 / Error code
+      placeholder: "TV_INTERNALS_CHANGED"
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤 / Steps to reproduce
+      description: 用的命令或 MCP 工具与参数（布局 ID 用 <layout> 代替）
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: doctor 输出 / doctor output
+      description: "`uv run tradingview-capture doctor --layout <layout>` 的 problems 与 checks；不含图表内容，可以贴"
