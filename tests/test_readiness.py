@@ -54,9 +54,30 @@ def test_daily_resolutions_compare_equal():
     assert verdict(snap(resolution="D")).ready
 
 
-def test_two_identical_reads_are_required():
+def test_two_structurally_equal_reads_are_required():
     assert verdict(snap(), previous=None).reason == "unstable"
-    assert verdict(snap(), previous=snap(studies=(("s1", "Alpha", 2, 2000, "older"),))).reason == "unstable"
+    assert verdict(snap(), previous=snap(studies=(("s1", "Alpha", 2, 1000, "new"),))).reason == "unstable"
+    assert verdict(snap(), previous=snap(last=1000)).reason == "unstable"
+
+
+def test_a_ticking_market_still_counts_as_stable():
+    ticking = snap(studies=(("s1", "Alpha", 2, 2000, "price moved"),))
+    assert verdict(snap(), previous=ticking).ready
+
+
+def test_the_timeout_reports_the_last_symbol_seen():
+    now = [0.0]
+    with pytest.raises(CaptureError) as err:
+        wait_until_ready(
+            lambda: snap(symbol="SSE_DLY:000001"),
+            target=TARGET,
+            timeframe="1D",
+            before_switch=None,
+            timeout=3,
+            sleep=lambda s: now.__setitem__(0, now[0] + s),
+            clock=lambda: now[0],
+        )
+    assert err.value.detail["symbol"] == "SSE_DLY:000001"
 
 
 def test_stale_tables_wait_for_the_grace_period():

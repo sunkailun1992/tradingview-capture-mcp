@@ -110,6 +110,24 @@ def test_later_failures_are_recorded_and_the_batch_goes_on(config):
     assert not (config.output_root / "batch" / "raw" / safe_name(SYMBOLS[1])).exists()
 
 
+def test_waits_for_the_restored_layout_to_finish_loading_before_switching(config):
+    summary, chart, _ = capture(config, make_request(config), FakeChart(loading_polls=5))
+    assert summary["totals"]["succeeded"] == 3, summary
+    assert chart.symbol == "SSE_DLY:000001"
+
+
+def test_a_live_market_whose_values_keep_moving_is_still_captured(config):
+    summary, _, _ = capture(config, make_request(config), FakeChart(ticking=True))
+    assert summary["totals"]["succeeded"] == 3, summary
+
+
+def test_a_switch_the_layout_undoes_is_made_again(config):
+    summary, _, _ = capture(config, make_request(config), FakeChart(revert_once={SYMBOLS[1]}))
+    assert summary["totals"]["succeeded"] == 3, summary
+    data = read_json(config.output_root / "batch" / "raw" / safe_name(SYMBOLS[1]) / "data.json")
+    assert data["readiness"]["reswitches"] == 1
+
+
 def test_an_unknown_symbol_fails_alone(config):
     summary, _, _ = capture(config, make_request(config), FakeChart(unknown={SYMBOLS[1]}))
     assert [(f["symbol"], f["code"]) for f in summary["failures"]] == [(SYMBOLS[1], "SYMBOL_NOT_FOUND")]

@@ -46,6 +46,15 @@ class ReadySnapshot:
             ),
         )
 
+    def structure(self) -> tuple[Any, ...]:
+        """Everything but the study digests, which move on every tick while a market is open."""
+        return (
+            self.symbol,
+            self.resolution,
+            self.last_bar_time,
+            tuple((s.id, s.status, s.last_time) for s in self.studies),
+        )
+
 
 @dataclass(frozen=True)
 class ReadyVerdict:
@@ -82,7 +91,7 @@ def judge(
             return ReadyVerdict(False, f"status:{study.name}")
         if study.last_time != current.last_bar_time:
             return ReadyVerdict(False, f"lastTime:{study.name}")
-    if previous != current:
+    if previous is None or previous.structure() != current.structure():
         return ReadyVerdict(False, "unstable")
     unchanged: tuple[str, ...] = ()
     if before_switch is not None and before_switch.symbol != target:
@@ -127,7 +136,7 @@ def wait_until_ready(
             raise CaptureError(
                 NOT_READY_TIMEOUT,
                 f"the chart was not ready after {timeout:g}s",
-                {"reason": verdict.reason, "polls": polls},
+                {"reason": verdict.reason, "polls": polls, "symbol": current.symbol},
             )
         previous = current
         sleep(interval)

@@ -49,6 +49,7 @@ CAPTURE_METHOD = "CDP_DESKTOP"
 PNG_SOURCE = "TradingViewApi.takeClientScreenshot"
 CSV_SOURCE = "generated from the chart series in the column order of TradingView's own export"
 MAX_SYMBOLS = 500
+MAX_RESWITCHES = 3
 
 
 @dataclass(frozen=True)
@@ -248,7 +249,7 @@ def run_capture(
                 raise CaptureError(
                     TV_INTERNALS_CHANGED, "TradingView's internals changed", {"failedChecks": issues}
                 )
-            original = driver.run("ready")
+            original = _settle_current_chart(driver, request, sleep=sleep, clock=clock)
             try:
                 if request.viewport is not None:
                     driver.set_viewport(request.viewport)
@@ -352,6 +353,29 @@ def run_capture(
         }
 
 
+def _settle_current_chart(
+    driver: ChartDriver,
+    request: CaptureRequest,
+    *,
+    sleep: Callable[[float], None],
+    clock: Callable[[], float],
+) -> dict[str, Any]:
+    """Wait until the chart TradingView restored at startup has finished loading.
+
+    A switch made while the layout is still loading is undone when the layout's own load completes."""
+    first = ReadySnapshot.from_page(driver.run("ready"))
+    _, snapshot, _, _ = wait_until_ready(
+        lambda: ReadySnapshot.from_page(driver.run("ready")),
+        target=first.symbol,
+        timeframe=first.resolution or request.timeframe,
+        before_switch=None,
+        timeout=request.ready_timeout_sec,
+        sleep=sleep,
+        clock=clock,
+    )
+    return {"symbol": snapshot.symbol, "resolution": snapshot.resolution}
+
+
 def _restore(driver: ChartDriver, original: Any, request: CaptureRequest) -> None:
     """Put the chart back on the symbol and resolution it showed before the batch."""
     if isinstance(original, dict) and original.get("symbol"):
@@ -386,8 +410,20 @@ def capture_symbol(
     if switched.get("timedOut") or after.get("symbol") != code:
         raise CaptureError(SYMBOL_NOT_FOUND, "the chart did not switch to this symbol", {"after": after})
     switched_at = stamp()
+    reswitches = 0
+
+    def read() -> ReadySnapshot:
+        nonlocal reswitches
+        snapshot = ReadySnapshot.from_page(driver.run("ready"))
+        if snapshot.symbol != code and reswitches < MAX_RESWITCHES:
+            # The layout can put its own symbol back right after a switch; ask again.
+            reswitches += 1
+            driver.run("switch", {"symbol": code, "timeframe": request.timeframe}, timeout=40.0)
+            snapshot = ReadySnapshot.from_page(driver.run("ready"))
+        return snapshot
+
     verdict, snapshot, polls, waited = wait_until_ready(
-        lambda: ReadySnapshot.from_page(driver.run("ready")),
+        read,
         target=code,
         timeframe=request.timeframe,
         before_switch=before,
@@ -456,6 +492,7 @@ def capture_symbol(
                 "waitedSec": round(waited, 3),
                 "lastBarTime": snapshot.last_bar_time,
                 "unchangedAfterSwitch": list(verdict.unchanged),
+                "reswitches": reswitches,
                 "studies": [
                     {
                         "id": s.id,

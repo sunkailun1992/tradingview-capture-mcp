@@ -53,6 +53,9 @@ class FakeChart:
         missing_study=None,
         static_study=None,
         diagnose=None,
+        loading_polls=0,
+        ticking=False,
+        revert_once=(),
     ):
         self.symbol = start_symbol
         self.previous = start_symbol
@@ -67,6 +70,12 @@ class FakeChart:
         self.diagnose_report = diagnose or OK_DIAGNOSE
         self.viewport = None
         self.calls = []
+        self.start_symbol = start_symbol
+        # The layout is still loading for this many reads after start; a switch made meanwhile is undone.
+        self.loading_left = loading_polls
+        self.ticking = ticking  # live market: the forming bar changes on every read
+        self.revert_once = set(revert_once)  # the first switch to these symbols is undone by the layout
+        self.ticks = 0
 
     def run(self, script, args=None, *, timeout=60.0):
         self.calls.append((script, dict(args or {})))
@@ -82,7 +91,20 @@ class FakeChart:
         return self.diagnose_report
 
     def _ready(self, args):
+        if self.loading_left > 0:
+            self.loading_left -= 1
+            studies = [
+                {"id": f"s{i}", "name": name, "status": 0, "lastTime": 2000, "digest": name}
+                for i, name in enumerate(self.studies)
+            ]
+            return {
+                "symbol": self.symbol,
+                "resolution": self.resolution,
+                "lastBarTime": 2000,
+                "studies": studies,
+            }
         self.polls += 1
+        self.ticks += 1
         settled = self.polls > self.settle_polls and self.symbol not in self.never_ready
         source = self.symbol if settled else self.previous
         return {
@@ -95,7 +117,8 @@ class FakeChart:
                     "name": name,
                     "status": 2 if settled else 1,
                     "lastTime": 2000,
-                    "digest": f"{name}:static" if name == self.static_study else f"{name}:{source}",
+                    "digest": (f"{name}:static" if name == self.static_study else f"{name}:{source}")
+                    + (f":{self.ticks}" if self.ticking and settled else ""),
                 }
                 for i, name in enumerate(self.studies)
             ],
@@ -106,9 +129,15 @@ class FakeChart:
         if args["symbol"] not in self.unknown:
             self.previous, self.symbol, self.polls = self.symbol, args["symbol"], 0
         self.resolution = args.get("timeframe") or self.resolution
+        after = {"symbol": self.symbol, "resolution": self.resolution}
+        if self.symbol in self.revert_once:
+            self.revert_once.discard(self.symbol)
+            self.symbol = self.previous
+        if self.loading_left > 0:
+            self.symbol = self.start_symbol  # the layout finishes loading and puts its own symbol back
         return {
             "before": before,
-            "after": {"symbol": self.symbol, "resolution": self.resolution},
+            "after": after,
             "timedOut": False,
         }
 
