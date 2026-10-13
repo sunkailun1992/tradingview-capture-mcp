@@ -1,4 +1,6 @@
-"""End-to-end check against a logged-in TradingView Desktop. Local only; private inputs come from the environment."""
+"""End-to-end check against a logged-in TradingView Desktop.
+
+Local only; the private inputs come from the environment."""
 
 import os
 from pathlib import Path
