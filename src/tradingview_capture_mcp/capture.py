@@ -29,7 +29,7 @@ from .errors import (
     CaptureError,
 )
 from .images import png_size
-from .readiness import ReadySnapshot, judge, wait_until_ready
+from .readiness import ReadySnapshot, judge, normalize_resolution, wait_until_ready
 from .store import (
     BatchLock,
     dumps_json,
@@ -445,8 +445,10 @@ def capture_symbol(
     clock: Callable[[], float],
 ) -> dict[str, Any]:
     started_at = stamp()
+    # Send the resolution in the form the chart reports (1D, not D) so an unchanged one is not re-set.
+    timeframe = normalize_resolution(request.timeframe)
     before = ReadySnapshot.from_page(driver.run("ready"))
-    switched = driver.run("switch", {"symbol": code, "timeframe": request.timeframe}, timeout=40.0) or {}
+    switched = driver.run("switch", {"symbol": code, "timeframe": timeframe}, timeout=40.0) or {}
     after = switched.get("after") or {}
     if switched.get("timedOut") or not same_symbol(str(after.get("symbol") or ""), code):
         raise CaptureError(SYMBOL_NOT_FOUND, "the chart did not switch to this symbol", {"after": after})
@@ -459,14 +461,14 @@ def capture_symbol(
         if not same_symbol(snapshot.symbol, code) and reswitches < MAX_RESWITCHES:
             # The layout can put its own symbol back right after a switch; ask again.
             reswitches += 1
-            driver.run("switch", {"symbol": code, "timeframe": request.timeframe}, timeout=40.0)
+            driver.run("switch", {"symbol": code, "timeframe": timeframe}, timeout=40.0)
             snapshot = ReadySnapshot.from_page(driver.run("ready"))
         return snapshot
 
     verdict, snapshot, polls, waited = wait_until_ready(
         read,
         target=code,
-        timeframe=request.timeframe,
+        timeframe=timeframe,
         before_switch=before,
         timeout=request.ready_timeout_sec,
         sleep=sleep,

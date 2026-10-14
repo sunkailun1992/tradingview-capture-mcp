@@ -193,6 +193,13 @@ def test_the_manifest_records_a_settled_start(config):
     assert startup == {"symbol": "SSE_DLY:000001", "resolution": "1D", "settled": True, "reason": None}
 
 
+def test_daily_resolution_is_sent_in_the_form_the_chart_reports(config):
+    summary, chart, _ = capture(config, make_request(config, timeframe="D"), FakeChart())
+    assert summary["totals"]["succeeded"] == 3, summary
+    sent = {args["timeframe"] for script, args in chart.calls if script == "switch"}
+    assert sent == {"1D"}
+
+
 def test_an_unknown_symbol_fails_alone(config):
     summary, _, _ = capture(config, make_request(config), FakeChart(unknown={SYMBOLS[1]}))
     assert [(f["symbol"], f["code"]) for f in summary["failures"]] == [(SYMBOLS[1], "SYMBOL_NOT_FOUND")]
