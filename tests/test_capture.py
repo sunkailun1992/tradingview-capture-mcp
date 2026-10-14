@@ -197,6 +197,32 @@ def test_retry_runs_only_failed_symbols_and_keeps_earlier_files(config):
     ]
 
 
+def test_a_batch_killed_before_its_manifest_can_be_resumed(config):
+    chart = FakeChart(unknown={SYMBOLS[1]})
+    capture(config, make_request(config), chart)
+    out = config.output_root / "batch"
+    (out / "capture-manifest.json").unlink()  # as if the process was killed before writing it
+    chart.unknown.clear()
+    chart.calls.clear()
+    summary, _, _ = capture(config, make_request(config, retry_failed=True), chart)
+    assert summary["totals"]["succeeded"] == 3, summary
+    assert [args["symbol"] for script, args in chart.calls if script == "switch"] == [
+        SYMBOLS[1],
+        "SSE_DLY:000001",
+    ]
+
+
+def test_a_killed_retry_does_not_block_the_next_one(config):
+    chart = FakeChart(unknown={SYMBOLS[1]})
+    capture(config, make_request(config), chart)
+    out = config.output_root / "batch"
+    (out / "attempts" / "2").mkdir()  # left behind by a retry that was killed
+    chart.unknown.clear()
+    summary, _, _ = capture(config, make_request(config, retry_failed=True), chart)
+    assert summary["totals"]["succeeded"] == 3, summary
+    assert read_json(out / "capture-manifest.json")["attempts"] == 3
+
+
 def test_retry_with_nothing_left_to_do(config):
     capture(config, make_request(config))
     with pytest.raises(CaptureError) as err:

@@ -92,16 +92,18 @@ def test_retry_request_rebuilds_the_original_request(config):
     assert (rebuilt.symbols, rebuilt.output_dir) == (("BINANCE:AAAUSDT.P",), str(out))
 
 
-def test_retry_needs_failed_or_pending_symbols(config, stub_python):
+def test_retry_needs_a_batch_with_something_left(config, stub_python):
     out = config.output_root / "batch"
     out.mkdir()
-    write_json_new(out / "batch.json", {"request": request(config).to_dict()})
     with pytest.raises(CaptureError) as err:
         jobs.retry(config, str(out), python=stub_python)
     assert err.value.code == "NOT_FOUND"
+    write_json_new(out / "batch.json", {"request": request(config).to_dict()})
+    assert jobs.retry(config, str(out), python=stub_python)["jobId"]  # no manifest yet: resumable
     write_json_new(
         out / "capture-manifest.json", {"symbols": [{"symbol": "BINANCE:AAAUSDT.P", "status": "ok"}]}
     )
     with pytest.raises(CaptureError) as err:
         jobs.retry(config, str(out), python=stub_python)
     assert err.value.code == "NOT_FOUND"
+    assert "every symbol already has a capture" in err.value.message

@@ -192,17 +192,16 @@ def run_capture(
     out = resolve_inside_root(config.output_root, request.output_dir)
     with BatchLock(config.output_root):
         if request.retry_failed:
-            manifest_path = out / "capture-manifest.json"
-            if not manifest_path.is_file():
-                raise CaptureError(NOT_FOUND, "this batch has no manifest to retry", {"output_dir": str(out)})
-            previous = read_json(manifest_path)
-            results: dict[str, dict[str, Any]] = {s["symbol"]: s for s in previous.get("symbols", [])}
+            previous, results = _previous_state(out)
             todo = [code for code in request.symbols if results.get(code, {}).get("status") != "ok"]
             if not todo:
                 raise CaptureError(
-                    NOT_FOUND, "this batch has no failed or pending symbols", {"output_dir": str(out)}
+                    NOT_FOUND,
+                    "nothing left to retry: every symbol already has a capture",
+                    {"output_dir": str(out)},
                 )
-            attempt = int(previous.get("attempts", 1)) + 1
+            ensure_dir(out / "attempts")
+            attempt = _next_attempt(out, previous)
             started_at = previous.get("startedAt") or stamp()
         else:
             make_dir_new(out)
@@ -321,7 +320,7 @@ def run_capture(
                 "error": error,
             },
         )
-        if request.retry_failed:
+        if (out / "capture-manifest.json").exists():
             replace_json(out / "capture-manifest.json", manifest)
         else:
             write_json_new(out / "capture-manifest.json", manifest)
@@ -342,6 +341,36 @@ def run_capture(
             "desktopVersionChanged": changed,
             "error": error,
         }
+
+
+def _previous_state(out: Path) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    """The last manifest, or, after a crash that left none, what batch.json and the finished folders show."""
+    manifest_path = out / "capture-manifest.json"
+    if manifest_path.is_file():
+        previous = read_json(manifest_path)
+        return previous, {s["symbol"]: s for s in previous.get("symbols", [])}
+    batch_path = out / "batch.json"
+    if not batch_path.is_file():
+        raise CaptureError(NOT_FOUND, "no batch at output_dir", {"output_dir": str(out)})
+    batch = read_json(batch_path)
+    results: dict[str, dict[str, Any]] = {}
+    for code in (batch.get("request") or {}).get("symbols", []):
+        capture_path = out / "raw" / safe_name(code) / "capture.json"
+        if capture_path.is_file():
+            results[code] = {
+                "symbol": code,
+                "safeName": safe_name(code),
+                "status": "ok",
+                "attempt": read_json(capture_path).get("attempt"),
+                "captureSha256": sha256_bytes(capture_path.read_bytes()),
+            }
+    return {"startedAt": batch.get("startedAt"), "attempts": 0}, results
+
+
+def _next_attempt(out: Path, previous: dict[str, Any]) -> int:
+    """One past every attempt recorded or started, so a killed retry never blocks the next one."""
+    started = [int(p.name) for p in (out / "attempts").iterdir() if p.name.isdigit()]
+    return max([int(previous.get("attempts") or 0), *started]) + 1
 
 
 def _settle_current_chart(

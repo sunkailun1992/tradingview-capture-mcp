@@ -56,12 +56,16 @@ def start(config: Config, request: CaptureRequest, *, python: str | None = None)
     validate_request(request)
     out = resolve_inside_root(config.output_root, request.output_dir)
     if request.retry_failed:
+        if not (out / "batch.json").is_file():
+            raise CaptureError(NOT_FOUND, "no batch at output_dir", {"output_dir": str(out)})
         manifest = out / "capture-manifest.json"
-        if not manifest.is_file() or all(
+        if manifest.is_file() and all(
             s.get("status") == "ok" for s in read_json(manifest).get("symbols", [])
         ):
             raise CaptureError(
-                NOT_FOUND, "this batch has no failed or pending symbols", {"output_dir": str(out)}
+                NOT_FOUND,
+                "nothing left to retry: every symbol already has a capture",
+                {"output_dir": str(out)},
             )
     elif out.exists():
         raise CaptureError(OUTPUT_EXISTS, "output_dir already exists", {"output_dir": str(out)})
