@@ -12,6 +12,7 @@ from typing import Any
 
 from .capture import CaptureRequest, run_capture, validate_request
 from .config import Config
+from .desktop import already_running, running_pids
 from .driver import RealDesktop
 from .errors import BATCH_LOCKED, INVALID_ARGUMENT, NOT_FOUND, OUTPUT_EXISTS, CaptureError
 from .store import (
@@ -79,6 +80,10 @@ def start(config: Config, request: CaptureRequest, *, python: str | None = None)
         raise CaptureError(OUTPUT_EXISTS, "output_dir already exists", {"output_dir": str(out)})
     if lock_is_held(config.output_root):
         raise CaptureError(BATCH_LOCKED, "another capture is running", {})
+    # Say so now, before a job or output_dir exists, not later from a background job.
+    pids = running_pids()
+    if pids:
+        raise already_running(pids)
     job_id = uuid.uuid4().hex
     folder = _jobs_dir(config)
     write_json_new(folder / f"{job_id}.request.json", request.to_dict())

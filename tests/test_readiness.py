@@ -92,6 +92,12 @@ def test_unchanged_data_is_fine_when_the_symbol_did_not_change():
     assert verdict(snap(), before=snap(), elapsed=0.0).ready
 
 
+def test_unchanged_data_is_fine_when_the_chart_already_showed_the_delayed_feed():
+    # The restored layout can show the target under its delayed-feed name; that is the same symbol.
+    result = verdict(snap(), before=snap(symbol="BINANCE_DLY:AAAUSDT.P"), elapsed=0.0)
+    assert (result.ready, result.unchanged) == (True, ())
+
+
 def test_wait_until_ready_polls_until_stable():
     reads = iter([snap(studies=(("s1", "Alpha", 1, 2000, "new"),)), snap(), snap()])
     now = [0.0]

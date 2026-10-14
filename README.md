@@ -35,7 +35,7 @@
 
 - macOS，已安装并登录 TradingView 桌面版；
 - Python 3.12+ 与 [uv](https://docs.astral.sh/uv/)；
-- 开始采集前，桌面版必须完全退出（⌘Q，只关窗口不够；全屏还是窗口都一样）：调试端口只能在启动时打开，工具会自己用只监听本机的调试端口启动它，采完再退出。已经开着时报 `TV_ALREADY_RUNNING`，退出后对同一目录调 `capture_retry` 即可；工具不会替你关掉它。
+- 开始采集前，桌面版必须完全退出（⌘Q，只关窗口不够；全屏还是窗口都一样）：调试端口只能在启动时打开，工具会自己用只监听本机的调试端口启动它，采完再退出。已经开着时 `capture_start` 当场报 `TV_ALREADY_RUNNING`、什么都不建，退出后再调一次即可；采集中途才打开导致停下的批次，用 `capture_retry` 续跑。工具不会替你关掉它。
 
 ## 安装与配置
 
@@ -93,7 +93,7 @@ uv run tradingview-capture read --output-dir ~/tradingview-captures/2026-10-14 \
   --symbol BINANCE:BTCUSDT.P --part tables --series-last 5
 ```
 
-错误一律带固定的错误码，例如 `TV_ALREADY_RUNNING`（桌面版已开着）、`TV_INTERNALS_CHANGED`（桌面版升级后内部结构变了）、`NOT_READY_TIMEOUT`（某品种迟迟没加载完）。
+错误一律带固定的错误码，例如 `TV_ALREADY_RUNNING`（桌面版已开着）、`TV_INTERNALS_CHANGED`（桌面版升级后内部结构变了）、`STUDY_MISSING`（布局里没有要求的指标）、`NOT_READY_TIMEOUT`（某品种迟迟没加载完）。
 
 ## 输出目录
 

@@ -270,7 +270,7 @@ def run_capture(
                         )
                         checked = True
                     except CaptureError as exc:
-                        if not checked and exc.code == TV_INTERNALS_CHANGED:
+                        if not checked and exc.code in (TV_INTERNALS_CHANGED, STUDY_MISSING):
                             raise
                         result = {
                             "symbol": code,
@@ -538,6 +538,13 @@ def capture_symbol(
             )
             if not ok
         ]
+        if failed and missing and set(failed) <= {"studies", "requiredStudies"}:
+            # Everything else answered: the layout lacks studies the caller asked for, the internals are fine.
+            raise CaptureError(
+                STUDY_MISSING,
+                "the layout lacks required studies; compare required_studies with the studies on the layout",
+                {"missing": missing, "found": names},
+            )
         if failed:
             raise CaptureError(
                 TV_INTERNALS_CHANGED,
