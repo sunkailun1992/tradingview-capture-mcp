@@ -12,7 +12,7 @@
 
 - **What it does:** starts TradingView Desktop with a loopback-only DevTools port, switches one layout through the TradingView codes you pass in, and writes per symbol: the chart as TradingView renders it (`image.png`), a CSV with the same columns as TradingView's own "Export chart data" (`chart.csv`), and the indicators' tables, labels, lines, boxes and drawings (`data.json`).
 - **What it does not do:** choose symbols, analyse anything, or upload anything. The caller decides what to capture and how to check and use the data.
-- **Requirements:** macOS, a logged-in TradingView Desktop that is not already running, Python 3.12+ and uv.
+- **Requirements:** macOS, a logged-in TradingView Desktop that is fully quit before a capture (Cmd+Q; full screen or not makes no difference, the tool starts it with its own debugging port), Python 3.12+ and uv.
 - **Use it:** register `uv --directory <repo> run tradingview-capture mcp` as a stdio MCP server, call `capture_start`, poll `capture_status`, then read with `batch_summary`, `symbol_data` and `image_crop`.
 
 ## 它做什么
@@ -35,7 +35,7 @@
 
 - macOS，已安装并登录 TradingView 桌面版；
 - Python 3.12+ 与 [uv](https://docs.astral.sh/uv/)；
-- 开始采集时桌面版不能已经开着：工具会自己以调试模式启动它，采完退出。
+- 开始采集前，桌面版必须完全退出（⌘Q，只关窗口不够；全屏还是窗口都一样）：调试端口只能在启动时打开，工具会自己用只监听本机的调试端口启动它，采完再退出。已经开着时报 `TV_ALREADY_RUNNING`，退出后对同一目录调 `capture_retry` 即可；工具不会替你关掉它。
 
 ## 安装与配置
 

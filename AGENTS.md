@@ -8,6 +8,7 @@
 - The tool only exports chart data and screenshots. It never decides which symbols to capture and never uploads anything; callers do that.
 - Hard rules: no arbitrary page scripts; the only page action that changes state is switching symbol and resolution; stop only the process this tool started; files 0600 and create-only.
 - Verify with `uv run pytest -q`, `node --test "tests/js/*.test.mjs"`, `uv run ruff check`, `uv run ruff format --check` and `bash scripts/check-private-content.sh`.
+- `TV_ALREADY_RUNNING` means the user has TradingView Desktop open (full screen or not). The debugging port can only be opened at launch, so ask the user to quit it with Cmd+Q, never kill it, then call `capture_retry` on the same `output_dir`. See "常见情况" below.
 - The maintainer and the maintainer's own Claude/Codex sessions may merge to `main` directly; everyone else opens a PR that the maintainer reviews. Squash only, never force-push.
 
 ## 项目定位
@@ -57,6 +58,16 @@ bash scripts/check-private-content.sh
 - 其他人都要走 PR：CI 全绿、维护者审核确认是有益的改动并批准、评审对话全部解决。
 - 只允许 squash 合并；禁止强推（含 `--force-with-lease`）和删除 `main`；任何代理都不得修改 ruleset 或仓库权限。
 - 推送被拒时先 `git fetch`，在最新远端上 rebase 并重跑验证。
+
+## 常见情况
+
+使用或修改本工具时遇到下面这些情况，先按这里处理，不要自己猜。
+
+- **`TV_ALREADY_RUNNING`**：用户自己开着 TradingView 桌面版。调试端口只能在启动时打开，工具只能控制自己带端口启动的那个桌面版，所以已经开着的连不上，全屏还是窗口都一样。请用户用 ⌘Q 完全退出（只关窗口不够），再对同一个 `output_dir` 调 `capture_retry`；对同一目录再调 `capture_start` 会得到 `OUTPUT_EXISTS`。不要替用户结束进程。
+- **全屏**：不影响采集，工具不点界面；只影响截图尺寸（PNG 等于窗口大小乘以屏幕像素比）。
+- **采集进行中**：不要打开或操作 TradingView。批次结束时工具会退出它，之后用户照常打开即可。活体测试（`TRADINGVIEW_CAPTURE_LIVE=1 uv run pytest -m live -q`）同样要求桌面版先完全退出。
+- **就绪证据**：开盘时 `digestMovingAtRead` 有值是正常的；`unchangedAfterSwitch` 有值时，要对照截图确认表格不是上一个品种的；`resolvedSymbol` 的交易所名以 `_DL` / `_DLY` 结尾表示延迟行情。
+- **单元测试全过、真实桌面版却报 `TV_INTERNALS_CHANGED`**：多半是 `tests/js/fake_tv.mjs` 没模拟到真实结构。先用 `doctor` 找到失效项，再用本机临时脚本读出相关对象的结构（只读类型、键名和数量，不读内容；脚本不提交，工具运行时仍只执行随版本固定的页面脚本），把假数据改成真实结构、看测试失败，再修页面脚本。2026-10-14 的 `studies.primitives` 误判就是这样：真实图表上，指标没画标签、线或框时，那里是一个空表，而假数据没有模拟。
 
 ## 桌面版升级后的修复流程
 

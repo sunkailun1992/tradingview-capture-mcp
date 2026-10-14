@@ -64,9 +64,15 @@ def launch(config: Config, *, startup_timeout: float = 40.0, poll: float = 0.5) 
         raise CaptureError(
             TV_NOT_INSTALLED, "TradingView Desktop was not found", {"app_path": str(config.app_path)}
         )
-    if running_pids():
+    pids = running_pids()
+    if pids:
         raise CaptureError(
-            TV_ALREADY_RUNNING, "TradingView Desktop is already running; quit it and retry", {}
+            TV_ALREADY_RUNNING,
+            "TradingView Desktop is already running without this tool's debugging port. The tool has to "
+            "start it itself and quits it when the batch ends; full screen or not makes no difference. Ask "
+            "the user to quit it completely (Cmd+Q; closing the window is not enough) and never kill it, "
+            "then retry; capture_retry continues a batch that stopped this way.",
+            {"pids": pids},
         )
     if listening_addresses(config.debug_port):
         raise CaptureError(PORT_IN_USE, "the debug port is already in use", {"port": config.debug_port})

@@ -76,6 +76,12 @@ def test_instructions_point_at_the_readiness_evidence():
         assert field in text
 
 
+def test_instructions_explain_a_desktop_the_user_already_has_open():
+    text = app.instructions
+    for hint in ("TV_ALREADY_RUNNING", "Cmd+Q", "never kill", "capture_retry"):
+        assert hint in text
+
+
 def test_capture_start_offers_no_viewport_override():
     tools = {tool.name: tool for tool in asyncio.run(app.list_tools())}
     parameters = set(tools["capture_start"].input_schema["properties"])

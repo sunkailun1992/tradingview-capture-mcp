@@ -306,6 +306,13 @@ def test_a_failed_start_still_leaves_a_manifest(config):
     assert desktop.stopped == 1
 
 
+def test_a_batch_stopped_by_an_open_desktop_is_finished_by_a_retry(config):
+    # The TV_ALREADY_RUNNING message tells agents to quit TradingView and call capture_retry; keep that true.
+    capture(config, make_request(config), fail=CaptureError("TV_ALREADY_RUNNING", "quit it first"))
+    summary, _, _ = capture(config, make_request(config, retry_failed=True), job_id="b" * 32)
+    assert (summary["state"], summary["totals"]["succeeded"]) == ("finished", 3)
+
+
 def test_a_desktop_version_change_is_flagged(config):
     for name, manifest in {
         "old": {

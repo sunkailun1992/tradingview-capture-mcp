@@ -58,6 +58,10 @@ def test_refuses_when_tradingview_already_runs(fake_app, monkeypatch):
     with pytest.raises(CaptureError) as err:
         desktop.launch(fake_app)
     assert err.value.code == "TV_ALREADY_RUNNING"
+    assert err.value.detail == {"pids": [4242]}
+    # The message is what an agent sees; it must say why and what the user has to do.
+    for hint in ("debugging port", "full screen", "Cmd+Q", "never kill", "capture_retry"):
+        assert hint in err.value.message
 
 
 def test_refuses_when_the_port_is_taken(fake_app):
