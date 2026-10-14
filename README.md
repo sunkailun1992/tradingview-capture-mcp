@@ -93,7 +93,7 @@ uv run tradingview-capture read --output-dir ~/tradingview-captures/2026-10-14 \
   --symbol BINANCE:BTCUSDT.P --part tables --series-last 5
 ```
 
-错误一律带固定的错误码，例如 `TV_ALREADY_RUNNING`（桌面版已开着）、`TV_INTERNALS_CHANGED`（桌面版升级后内部结构变了）、`NOT_READY_TIMEOUT`（某品种迟迟没加载完）。
+错误一律带固定的错误码，例如 `TV_ALREADY_RUNNING`（桌面版已开着）、`TV_INTERNALS_CHANGED`（桌面版升级后内部结构变了）、`STUDY_MISSING`（布局里没有要求的指标）、`NOT_READY_TIMEOUT`（某品种迟迟没加载完）。
 
 ## 输出目录
 

@@ -100,16 +100,20 @@ def test_the_self_check_stops_the_batch_when_the_first_symbol_lacks_a_required_s
     chart = FakeChart(missing_study=(SYMBOLS[0], "Alpha"))
     summary, _, _ = capture(config, make_request(config), chart)
     assert summary["state"] == "stopped"
-    assert summary["error"]["detail"]["failedChecks"] == ["requiredStudies"]
+    # A layout without a required study is a layout problem, not changed internals: say so.
+    assert summary["error"]["code"] == "STUDY_MISSING"
+    assert summary["error"]["detail"]["missing"] == ["Alpha"]
+    assert "Beta" in summary["error"]["detail"]["found"]
+    assert summary["totals"]["pending"] == 3
     assert chart.symbol == "SSE_DLY:000001"
 
 
 def test_the_self_check_moves_to_the_next_symbol_when_the_first_never_reaches_extraction(config):
     chart = FakeChart(unknown={SYMBOLS[0]}, missing_study=(SYMBOLS[1], "Alpha"))
     summary, _, _ = capture(config, make_request(config), chart)
+    # The first symbol fails before extraction, so the self-check runs, and stops the batch, on the second.
     assert summary["state"] == "stopped", summary
-    assert summary["error"]["code"] == "TV_INTERNALS_CHANGED"
-    assert summary["error"]["detail"]["failedChecks"] == ["requiredStudies"]
+    assert (summary["error"]["code"], summary["error"]["detail"]["missing"]) == ("STUDY_MISSING", ["Alpha"])
 
 
 def test_later_failures_are_recorded_and_the_batch_goes_on(config):

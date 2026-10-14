@@ -67,6 +67,7 @@ bash scripts/check-private-content.sh
 - **本机 MCP 跑的是独立副本**：`uv tool install` 装在 `~/.local/bin/tradingview-capture`，不是仓库目录。修复合并进 `main` 后运行 `uv tool upgrade tradingview-capture-mcp`，再重开会话才生效；只想试本地改动时，临时把注册的命令换成 `uv --directory <仓库路径> run tradingview-capture mcp`。
 - **全屏**：不影响采集，工具不点界面；只影响截图尺寸（PNG 等于窗口大小乘以屏幕像素比）。
 - **采集进行中**：不要打开或操作 TradingView。批次结束时工具会退出它，之后用户照常打开即可。活体测试（`TRADINGVIEW_CAPTURE_LIVE=1 uv run pytest -m live -q`）同样要求桌面版先完全退出。
+- **`STUDY_MISSING`**：布局里找不到 `required_studies` 里的指标（按子串匹配指标名）。对照错误明细里的 `missing` 和 `found` 核对传入的名字，或请用户在 TradingView 里把指标加回布局；这不是页面脚本的问题，不要去改 `page/*.js`。
 - **就绪证据**：开盘时 `digestMovingAtRead` 有值是正常的；`unchangedAfterSwitch` 有值时，要对照截图确认表格不是上一个品种的；`resolvedSymbol` 的交易所名以 `_DL` / `_DLY` 结尾表示延迟行情。
 - **单元测试全过、真实桌面版却报 `TV_INTERNALS_CHANGED`**：多半是 `tests/js/fake_tv.mjs` 没模拟到真实结构。先用 `doctor` 找到失效项，再用本机临时脚本读出相关对象的结构（只读类型、键名和数量，不读内容；脚本不提交，工具运行时仍只执行随版本固定的页面脚本），把假数据改成真实结构、看测试失败，再修页面脚本。2026-10-14 的 `studies.primitives` 误判就是这样：真实图表上，指标没画标签、线或框时，那里是一个空表，而假数据没有模拟。
 
