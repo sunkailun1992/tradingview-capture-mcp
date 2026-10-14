@@ -30,11 +30,11 @@ results.py                    读批次、读品种数据、裁图
 
 ## 数据流
 
-1. 调用方传入布局 ID、TradingView 代码、周期、输出目录、必需指标、视口。
+1. 调用方传入布局 ID、TradingView 代码、周期、输出目录、必需指标。
 2. `capture.run_capture` 拿批次锁，建目录，启动桌面版，跑 `diagnose` 自检。
 3. 每个品种：`ready` 记下切换前的指纹 → `switch` → 轮询 `ready` 直到 `readiness.judge` 判定就绪 → `extract` 一次读完 → `screenshot`。
 4. 文件先写进 `raw/.<名>.partial-<次>/`，全部成功后整目录改名为 `raw/<名>/`；失败的半成品移到 `attempts/<次>/`，从不删除。
-5. 收尾恢复原品种和视口，退出桌面版，写 `capture-manifest.json`。
+5. 收尾恢复原品种和周期，退出桌面版，写 `capture-manifest.json`。
 
 ## 新增或修改页面脚本
 

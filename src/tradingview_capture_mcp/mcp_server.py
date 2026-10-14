@@ -13,8 +13,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from . import __version__, diagnostics, jobs, results
 from .capture import CaptureRequest
 from .config import load_config
-from .driver import Viewport
-from .errors import INVALID_ARGUMENT, CaptureError
+from .errors import CaptureError
 
 INSTRUCTIONS = (
     "Exports TradingView Desktop chart data and screenshots into files and never uploads anything. "
@@ -51,23 +50,14 @@ def capture_start(
     output_dir: str,
     timeframe: str = "1D",
     required_studies: list[str] | None = None,
-    viewport_width: int | None = None,
-    viewport_height: int | None = None,
-    viewport_scale: float = 1.0,
     ready_timeout_sec: float = 60.0,
 ) -> dict[str, Any]:
-    viewport = None
-    if viewport_width is not None or viewport_height is not None:
-        if viewport_width is None or viewport_height is None:
-            raise CaptureError(INVALID_ARGUMENT, "pass both viewport_width and viewport_height", {})
-        viewport = Viewport(viewport_width, viewport_height, viewport_scale)
     request = CaptureRequest(
         layout=layout,
         symbols=tuple(symbols),
         timeframe=timeframe,
         output_dir=output_dir,
         required_studies=tuple(required_studies or ()),
-        viewport=viewport,
         ready_timeout_sec=ready_timeout_sec,
     )
     return jobs.start(load_config(), request)

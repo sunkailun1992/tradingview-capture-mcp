@@ -43,7 +43,6 @@ TradingView 桌面版是 Electron 应用，页面里的图表有完整的数据�
 | `timeframe` | 周期，例如 `1D`。当前周期不符时先切换，收尾时恢复 |
 | `output_dir` | 本批的输出目录，必须是绝对路径；父目录已存在且在本机配置的输出根目录之下；目录本身必须还不存在（续跑同一批除外），由工具创建 |
 | `required_studies` | 自检时要求必须存在的指标名（按子串匹配），可不传 |
-| `viewport` | 截图用的视口宽、高和像素比；不传就用当前窗口 |
 | `ready_timeout_sec` | 单个品种最长等待就绪的秒数，默认 60 |
 
 MCP 工具名和参数名用 snake_case，输出文件里的 JSON 键用 camelCase。
@@ -55,7 +54,7 @@ MCP 工具名和参数名用 snake_case，输出文件里的 JSON 键用 camelCa
 | 模块 | 职责 |
 |---|---|
 | `desktop.py` | 启动、发现和退出桌面版：带 `--remote-debugging-port` 启动，核对端口只监听 127.0.0.1，记下自己启动的 PID；退出只针对这个 PID，先正常退出，超时再按 PID 结束，从不按进程名结束进程。桌面版已经在普通模式下运行时报错停止，不关用户的程序 |
-| `cdp.py` | 最小 CDP 客户端：列出页面目标、按布局 ID 选页、`Runtime.evaluate`、`Emulation`（固定截图视口） |
+| `cdp.py` | 最小 CDP 客户端：列出页面目标、按布局 ID 选页、`Runtime.evaluate`；HTTP 与 WebSocket 都不走系统代理 |
 | `page/*.js` | 页面内的只读脚本，随版本固定：`alive`、`ready`、`switch`、`extract`（身份、指标、表格 / 标签 / 线 / 框、绘图、曲线，一次调用读完）、`screenshot`、`diagnose`。调用方不能传入任意脚本 |
 | `capture.py` | 批次流程：开工自检、逐品种切换并判断就绪、提取、写文件、收尾恢复 |
 | `store.py` | 写文件：0600、只新建（`O_EXCL`）、写完算 SHA256；批次锁；manifest |
@@ -69,7 +68,7 @@ MCP 工具名和参数名用 snake_case，输出文件里的 JSON 键用 camelCa
 
 1. 校验参数，拿批次锁，建 `output_dir`，写 `batch.json`（开工时间、参数、工具版本）。`symbols` 原样存档并算 SHA256。
 2. 启动桌面版，等 CDP 就绪，核对监听地址，选中 `layout` 对应的页面，记下当前的品种和周期。
-3. 传了 `viewport` 就用 `Emulation.setDeviceMetricsOverride` 固定视口和像素比，让截图尺寸稳定。
+3. 不改视口：桌面版里 TradingView 的截图尺寸跟着窗口大小走，CDP 的视口模拟对它不起作用（2026-10-14 整批演练实测），实际尺寸记在 `capture.json`。
 4. 自检：在第一个品种上完整提取一遍，检查身份可读、`required_studies` 都在、表格和标签集合能访问、曲线序列行数大于 0、截图是有效的 PNG。任何一项不过，整批停止，返回错误码 `TV_INTERNALS_CHANGED` 并附上失效点，不留半成品。
 5. 记下桌面版版本。如果和输出根目录下最近一次成功批次的版本不同，在 manifest 里标 `desktopVersionChanged: true`。
 
@@ -97,7 +96,7 @@ MCP 工具名和参数名用 snake_case，输出文件里的 JSON 键用 camelCa
 
 ### 4.3 收尾
 
-- 恢复开工前的品种和周期，清掉视口覆盖，退出本工具启动的桌面版，写 `capture-manifest.json`，释放锁。
+- 恢复开工前的品种和周期，退出本工具启动的桌面版，写 `capture-manifest.json`，释放锁。
 - 返回汇总：成功数、失败数和原因、`desktopVersionChanged`。
 
 ### 4.4 续跑
@@ -226,7 +225,7 @@ MCP 工具名和参数名用 snake_case，输出文件里的 JSON 键用 camelCa
 - 依赖 TradingView 未公开的内部结构，桌面版升级可能导致失效。靠自检发现，按第 8 节修复。
 - 自动化使用可能和 TradingView 的服务条款冲突，由使用者自行判断并承担。
 - 斐波等绘图的端点读取接口可用，但截至 2026-10-14 还没在画了斐波的图上验证过。
-- PNG 的分辨率随视口和像素比变化，所以要固定视口才能保证前后一致。
+- PNG 的尺寸等于桌面版窗口大小乘以像素比；要前后一致，需要保持窗口大小不变。
 - 生成的 CSV 和原生下载的 CSV 是否逐值一致，要在 M3 用原生文件比对确认。
 - 首版只支持 macOS 和 TradingView 桌面版。
 

@@ -13,13 +13,6 @@ from .errors import CDP_ERROR, TV_INTERNALS_CHANGED, CaptureError
 
 
 @dataclass(frozen=True)
-class Viewport:
-    width: int
-    height: int
-    scale: float = 1.0
-
-
-@dataclass(frozen=True)
 class DesktopInfo:
     version: str
     browser: str
@@ -27,10 +20,6 @@ class DesktopInfo:
 
 class ChartDriver(Protocol):
     def run(self, script: str, args: dict[str, Any] | None = None, *, timeout: float = 60.0) -> Any: ...
-
-    def set_viewport(self, viewport: Viewport) -> None: ...
-
-    def clear_viewport(self) -> None: ...
 
 
 class DesktopControl(Protocol):
@@ -47,20 +36,6 @@ class CdpDriver:
 
     def run(self, script: str, args: dict[str, Any] | None = None, *, timeout: float = 60.0) -> Any:
         return self._session.evaluate(page.build(script, args), timeout=timeout)
-
-    def set_viewport(self, viewport: Viewport) -> None:
-        self._session.call(
-            "Emulation.setDeviceMetricsOverride",
-            {
-                "width": viewport.width,
-                "height": viewport.height,
-                "deviceScaleFactor": viewport.scale,
-                "mobile": False,
-            },
-        )
-
-    def clear_viewport(self) -> None:
-        self._session.call("Emulation.clearDeviceMetricsOverride")
 
 
 class RealDesktop:

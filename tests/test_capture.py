@@ -7,7 +7,6 @@ from fakes import OK_DIAGNOSE, FakeChart, FakeClock, FakeDesktop
 
 from tradingview_capture_mcp.capture import CaptureRequest, run_capture, validate_request
 from tradingview_capture_mcp.config import Config
-from tradingview_capture_mcp.driver import Viewport
 from tradingview_capture_mcp.errors import CaptureError
 from tradingview_capture_mcp.store import BatchLock, read_json, safe_name, sha256_bytes, write_json_new
 
@@ -28,7 +27,6 @@ def make_request(config, **changes):
         timeframe="1D",
         output_dir=str(config.output_root / "batch"),
         required_studies=("Alpha",),
-        viewport=Viewport(800, 600, 2.0),
     )
     return dataclasses.replace(base, **changes)
 
@@ -49,7 +47,7 @@ def test_captures_every_symbol_and_restores_the_chart(config):
     assert summary["state"] == "finished"
     assert summary["totals"] == {"requested": 3, "succeeded": 3, "failed": 0, "pending": 0}
     assert (desktop.started, desktop.stopped) == (1, 1)
-    assert (chart.symbol, chart.viewport) == ("SSE_DLY:000001", None)
+    assert chart.symbol == "SSE_DLY:000001"
     for code in SYMBOLS:
         folder = out / "raw" / safe_name(code)
         for name in ("image.png", "chart.csv", "data.json", "capture.json"):
@@ -246,7 +244,6 @@ def test_a_desktop_version_change_is_flagged(config):
         {"symbols": ("A:B!", "A:B&")},
         {"timeframe": "4H"},
         {"ready_timeout_sec": 1.0},
-        {"viewport": Viewport(10, 10, 1.0)},
         {"required_studies": ("",)},
     ],
 )

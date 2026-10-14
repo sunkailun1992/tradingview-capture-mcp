@@ -8,14 +8,14 @@ import contextlib
 import os
 import time
 from collections.abc import Callable
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from . import TOOL_NAME, __version__
 from .config import Config
 from .diagnostics import wait_for_internals
-from .driver import ChartDriver, DesktopControl, DesktopInfo, Viewport
+from .driver import ChartDriver, DesktopControl, DesktopInfo
 from .errors import (
     CDP_ERROR,
     INTERNAL_ERROR,
@@ -60,7 +60,6 @@ class CaptureRequest:
     timeframe: str
     output_dir: str
     required_studies: tuple[str, ...] = ()
-    viewport: Viewport | None = None
     ready_timeout_sec: float = 60.0
     retry_failed: bool = False
 
@@ -71,7 +70,6 @@ class CaptureRequest:
             "timeframe": self.timeframe,
             "output_dir": self.output_dir,
             "required_studies": list(self.required_studies),
-            "viewport": asdict(self.viewport) if self.viewport else None,
             "ready_timeout_sec": self.ready_timeout_sec,
             "retry_failed": self.retry_failed,
         }
@@ -79,18 +77,12 @@ class CaptureRequest:
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> CaptureRequest:
         try:
-            viewport = raw.get("viewport")
             return cls(
                 layout=str(raw["layout"]),
                 symbols=tuple(str(s) for s in raw["symbols"]),
                 timeframe=str(raw["timeframe"]),
                 output_dir=str(raw["output_dir"]),
                 required_studies=tuple(str(s) for s in raw.get("required_studies") or ()),
-                viewport=Viewport(
-                    int(viewport["width"]), int(viewport["height"]), float(viewport.get("scale", 1.0))
-                )
-                if viewport
-                else None,
                 ready_timeout_sec=float(raw.get("ready_timeout_sec", 60.0)),
                 retry_failed=bool(raw.get("retry_failed", False)),
             )
@@ -120,11 +112,6 @@ def validate_request(request: CaptureRequest) -> None:
         bad("ready_timeout_sec must be between 5 and 600")
     if len(request.required_studies) > 32 or any(not s or len(s) > 128 for s in request.required_studies):
         bad("required_studies must be up to 32 non-empty names")
-    viewport = request.viewport
-    if viewport is not None and not (
-        200 <= viewport.width <= 8000 and 200 <= viewport.height <= 8000 and 0.5 <= viewport.scale <= 4
-    ):
-        bad("viewport must be 200-8000 pixels per side with a scale of 0.5-4")
 
 
 class Progress:
@@ -252,9 +239,6 @@ def run_capture(
                 )
             original = _settle_current_chart(driver, request, sleep=sleep, clock=clock)
             try:
-                if request.viewport is not None:
-                    driver.set_viewport(request.viewport)
-                    sleep(1.0)
                 for index, code in enumerate(todo):
                     progress.update(current=code)
                     try:
@@ -313,7 +297,6 @@ def run_capture(
             "attempts": attempt,
             "layout": request.layout,
             "timeframe": request.timeframe,
-            "viewport": asdict(request.viewport) if request.viewport else None,
             "desktop": {
                 "version": info.version if info else None,
                 "browser": info.browser if info else None,
@@ -399,9 +382,6 @@ def _restore(driver: ChartDriver, original: Any, request: CaptureRequest) -> Non
                 {"symbol": original["symbol"], "timeframe": original.get("resolution") or request.timeframe},
                 timeout=40.0,
             )
-    if request.viewport is not None:
-        with contextlib.suppress(CaptureError):
-            driver.clear_viewport()
 
 
 def capture_symbol(
@@ -548,7 +528,6 @@ def capture_symbol(
             "layout": request.layout,
             "timeframe": request.timeframe,
             "attempt": attempt,
-            "viewport": asdict(request.viewport) if request.viewport else None,
             "times": {
                 "startedAt": started_at,
                 "switchedAt": switched_at,

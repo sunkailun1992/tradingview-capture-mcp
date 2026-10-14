@@ -68,3 +68,9 @@ def test_instructions_state_the_export_only_boundary():
     text = app.instructions
     assert "never uploads" in text
     assert "caller chooses the symbols" in text
+
+
+def test_capture_start_offers_no_viewport_override():
+    tools = {tool.name: tool for tool in asyncio.run(app.list_tools())}
+    parameters = set(tools["capture_start"].input_schema["properties"])
+    assert not {name for name in parameters if name.startswith("viewport")}

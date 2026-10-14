@@ -6,7 +6,7 @@ Keep the seams that make the flow testable without TradingView — the `ChartDri
 
 ## 要用的
 
-- **Protocol 接缝**：`ChartDriver`（跑页面脚本、设视口）与 `DesktopControl`（启停桌面版）。真实实现是 `CdpDriver` / `RealDesktop`，测试用 `tests/fakes.py` 的 `FakeChart` / `FakeDesktop`。流程代码只依赖接缝。
+- **Protocol 接缝**：`ChartDriver`（跑页面脚本）与 `DesktopControl`（启停桌面版）。真实实现是 `CdpDriver` / `RealDesktop`，测试用 `tests/fakes.py` 的 `FakeChart` / `FakeDesktop`。流程代码只依赖接缝。
 - **纯函数做判断**：就绪判断 `readiness.judge`、自检 `diagnostics.problems`、请求校验 `capture.validate_request` 都不碰 I/O，便于逐条件测试。
 - **错误码而不是异常类型树**：只有一个 `CaptureError`，用 `code` 区分；入口按 code 转成 MCP 错误或命令行 JSON。
 - **依赖注入时间**：`run_capture` 接受 `sleep` 与 `clock`，测试用假时钟，不真等。

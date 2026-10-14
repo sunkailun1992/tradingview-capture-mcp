@@ -121,7 +121,7 @@ uv run tradingview-capture read --output-dir ~/tradingview-captures/2026-10-14 \
 
 - 同一个 TradingView 账号在别处（例如浏览器）同时在线时，可能被提示"在另一台设备上使用"而断开实时数据。
 - 桌面版升级后若内部结构变了，工具会报 `TV_INTERNALS_CHANGED` 并停止；修复流程见 [AGENTS.md](AGENTS.md)。
-- PNG 的尺寸随窗口变化；需要固定尺寸时传 `viewport`（命令行 `--viewport 1835x821@2`）。
+- PNG 的尺寸等于桌面版窗口大小乘以屏幕像素比，实际尺寸记在 `capture.json`。需要每批一致，就保持桌面版窗口大小不变。
 
 ## 开发
 

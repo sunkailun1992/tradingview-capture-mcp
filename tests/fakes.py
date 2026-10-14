@@ -72,7 +72,6 @@ class FakeChart:
         self.static_study = static_study
         self.diagnose_report = diagnose or OK_DIAGNOSE
         self.diagnose_sequence = list(diagnose_sequence)  # reports returned first, e.g. while the page loads
-        self.viewport = None
         self.calls = []
         self.start_symbol = start_symbol
         # The layout is still loading for this many reads after start; a switch made meanwhile is undone.
@@ -87,12 +86,6 @@ class FakeChart:
     def run(self, script, args=None, *, timeout=60.0):
         self.calls.append((script, dict(args or {})))
         return getattr(self, "_" + script)(args or {})
-
-    def set_viewport(self, viewport):
-        self.viewport = viewport
-
-    def clear_viewport(self):
-        self.viewport = None
 
     def _diagnose(self, args):
         if self.diagnose_sequence:

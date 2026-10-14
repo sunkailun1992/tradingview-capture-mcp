@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import sys
 import uuid
 from pathlib import Path
@@ -14,17 +13,8 @@ from typing import Any
 from . import diagnostics, jobs, results
 from .capture import CaptureRequest, run_capture
 from .config import load_config
-from .driver import RealDesktop, Viewport
+from .driver import RealDesktop
 from .errors import INVALID_ARGUMENT, CaptureError
-
-
-def _viewport(value: str | None) -> Viewport | None:
-    if not value:
-        return None
-    match = re.fullmatch(r"(\d+)x(\d+)(?:@(\d+(?:\.\d+)?))?", value)
-    if not match:
-        raise CaptureError(INVALID_ARGUMENT, "viewport must look like 1835x821@2", {"viewport": value})
-    return Viewport(int(match[1]), int(match[2]), float(match[3] or 1.0))
 
 
 def _box(value: str) -> tuple[int, int, int, int]:
@@ -47,7 +37,6 @@ def build_parser() -> argparse.ArgumentParser:
     cap.add_argument("--symbols-file", help="a file with one TradingView code per line")
     cap.add_argument("--timeframe", default="1D")
     cap.add_argument("--required-study", action="append", default=[])
-    cap.add_argument("--viewport", help="WIDTHxHEIGHT[@SCALE], for example 1835x821@2")
     cap.add_argument("--ready-timeout", type=float, default=60.0)
     cap.add_argument("--retry-failed", action="store_true", help="retry the failed symbols of --output-dir")
     cap.add_argument("--foreground", action="store_true")
@@ -91,7 +80,6 @@ def _capture(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             timeframe=args.timeframe,
             output_dir=args.output_dir,
             required_studies=tuple(args.required_study),
-            viewport=_viewport(args.viewport),
             ready_timeout_sec=args.ready_timeout,
         )
     if not args.foreground:
