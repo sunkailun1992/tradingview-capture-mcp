@@ -47,6 +47,15 @@ function fixture(overrides = {}) {
   });
 }
 
+test('extract gives boxes the bar times of their edges', async () => {
+  const zone = makeStudy({
+    id: 'z1', name: 'Zones', zorder: -10000, plots: [], rows: [[1000], [2000]],
+    boxes: [{ id: 5, x1: 0, y1: 2, x2: 1, y2: 1, bc: 255 }],
+  });
+  const result = await run('extract', {}, fixture({ panes: [[zone]], shapes: [] }));
+  assert.deepEqual(result.studies[0].boxes, [{ id: 5, x1: 0, y1: 2, x2: 1, y2: 1, bc: 255, time1: 1000, time2: 2000 }]);
+});
+
 test('extract orders studies by pane then z-order and writes export-shaped CSV', async () => {
   const result = await run('extract', {}, fixture());
   assert.deepEqual(result.studies.map((s) => s.name), ['Assist', 'Band', 'Delta']);

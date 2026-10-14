@@ -48,7 +48,10 @@ const studies = ordered.map((source) => {
     extend: l.ex || null, style: l.st === undefined ? null : l.st, color: l.ci === undefined ? null : l.ci,
     width: l.w === undefined ? null : l.w,
   }));
-  const boxes = primitives(source, 'dwgboxes', 'boxes').map((b) => plain(b) || { id: b.id });
+  // Boxes keep every field TradingView stores; their left and right edges also get bar times, as lines do.
+  const boxes = primitives(source, 'dwgboxes', 'boxes').map((b) => ({
+    ...(plain(b) || { id: b.id }), time1: barTime(b.x1), time2: barTime(b.x2),
+  }));
   const data = source.data();
   const row = data && data.size() > 0 ? data.valueAt(lastIndex) : null;
   const lastValues = exportedPlots(meta).map((p) => [p.title, row ? num(row[p.column]) : null]);
