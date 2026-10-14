@@ -64,6 +64,7 @@ bash scripts/check-private-content.sh
 使用或修改本工具时遇到下面这些情况，先按这里处理，不要自己猜。
 
 - **`TV_ALREADY_RUNNING`**：用户自己开着 TradingView 桌面版。调试端口只能在启动时打开，工具只能控制自己带端口启动的那个桌面版，所以已经开着的连不上，全屏还是窗口都一样。请用户用 ⌘Q 完全退出（只关窗口不够），再对同一个 `output_dir` 调 `capture_retry`；对同一目录再调 `capture_start` 会得到 `OUTPUT_EXISTS`。不要替用户结束进程。
+- **本机 MCP 跑的是独立副本**：`uv tool install` 装在 `~/.local/bin/tradingview-capture`，不是仓库目录。修复合并进 `main` 后运行 `uv tool upgrade tradingview-capture-mcp`，再重开会话才生效；只想试本地改动时，临时把注册的命令换成 `uv --directory <仓库路径> run tradingview-capture mcp`。
 - **全屏**：不影响采集，工具不点界面；只影响截图尺寸（PNG 等于窗口大小乘以屏幕像素比）。
 - **采集进行中**：不要打开或操作 TradingView。批次结束时工具会退出它，之后用户照常打开即可。活体测试（`TRADINGVIEW_CAPTURE_LIVE=1 uv run pytest -m live -q`）同样要求桌面版先完全退出。
 - **就绪证据**：开盘时 `digestMovingAtRead` 有值是正常的；`unchangedAfterSwitch` 有值时，要对照截图确认表格不是上一个品种的；`resolvedSymbol` 的交易所名以 `_DL` / `_DLY` 结尾表示延迟行情。
@@ -76,7 +77,7 @@ bash scripts/check-private-content.sh
 1. 运行 `uv run tradingview-capture doctor --layout <布局ID>`（或 MCP `diagnose`），拿到失效的检查项和附近的字段结构；报告里没有图表内容。
 2. 在分支上修改 `src/tradingview_capture_mcp/page/*.js`，先在 `tests/js/` 补一个能复现结构变化的用例（用编造的数据），看它失败，再修到通过。
 3. 跑全部验证命令，再用一个品种做活体自检。
-4. 按"提交与合并"合并，发版并在 `CHANGELOG.md` 记下对应的桌面版版本。
+4. 按"提交与合并"合并，发版并在 `CHANGELOG.md` 记下对应的桌面版版本；本机运行 `uv tool upgrade tradingview-capture-mcp` 更新 MCP 用的副本。
 5. 新版本的第一批会在 manifest 里标 `desktopVersionChanged`，提醒调用方逐项核对。
 
 修复只改"怎么读"，不改输出格式；确实要改输出格式时升主版本号并在 PR 里写明。
