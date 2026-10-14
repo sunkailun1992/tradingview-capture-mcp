@@ -23,6 +23,7 @@
 ### 新增（续）
 
 - `identity` 增加 `priceScale`、`minMove`（价格按 minMove / priceScale 的步长显示，priceScale 100 即两位小数）。
+- 每个指标增加 `plots`：原生导出会带的每条曲线一项，含 `id`、标题、类型、在 `chart.csv` 里的列号（`csvColumn`），以及形状（`plotType`）、位置（`location`）、颜色、文字、大小和是否隐藏。形状类曲线（如三角、字符标记）在 CSV 里有值的那根 K 就是画了标记的 K，调用方可以按样式认出是哪一种标记。
 
 ### 已核对
 

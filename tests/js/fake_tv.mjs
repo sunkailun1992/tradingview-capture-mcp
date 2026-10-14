@@ -20,7 +20,16 @@ function primitiveCollection(key, items, nested) {
 
 // Labels, lines and boxes store x as a slot in _graphics._indexes, which holds the bar index; -2000000 marks a bar
 // outside the loaded range (probed on TradingView Desktop 3.4.1, 2026-10-14).
-export function makeStudy({ id, name, zorder, plots, rows, styles = {}, ohlcPlots, cells = [], labels = [], lines = [], boxes = [], status = 2, indexes = [] }) {
+// Live plot properties (colour, plot type, location) sit in properties().childs().styles.childs()[plotId].
+function plotProperties(plotProps) {
+  const node = (value) => ({ value: () => value });
+  const styles = Object.fromEntries(Object.entries(plotProps).map(([plotId, fields]) => [plotId, {
+    childs: () => Object.fromEntries(Object.entries(fields).map(([key, value]) => [key, node(value)])),
+  }]));
+  return { childs: () => ({ styles: { childs: () => styles } }) };
+}
+
+export function makeStudy({ id, name, zorder, plots, rows, styles = {}, ohlcPlots, cells = [], labels = [], lines = [], boxes = [], status = 2, indexes = [], plotProps = {} }) {
   return {
     id: () => id,
     zorder: () => zorder,
@@ -28,6 +37,7 @@ export function makeStudy({ id, name, zorder, plots, rows, styles = {}, ohlcPlot
     metaInfo: () => ({ description: name, plots, styles, ohlcPlots }),
     data: () => plotList(rows),
     inputs: () => ({ length: 14 }),
+    properties: () => plotProperties(plotProps),
     _graphics: {
       _indexes: indexes,
       _primitivesCollection: {

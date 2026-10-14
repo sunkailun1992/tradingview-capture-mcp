@@ -28,8 +28,33 @@ function plain(value) {
   }
 }
 
+// Live plot properties (colour, plot type, location); missing ones stay null rather than stopping the read.
+function plotStyles(source) {
+  try {
+    const styles = source.properties().childs().styles.childs();
+    const out = {};
+    for (const [plotId, node] of Object.entries(styles)) {
+      const fields = node && typeof node.childs === 'function' ? node.childs() : {};
+      out[plotId] = {};
+      for (const key of ['color', 'plottype', 'location']) {
+        const child = fields[key];
+        if (child && typeof child.value === 'function') out[plotId][key] = plain(child.value());
+      }
+    }
+    return out;
+  } catch (e) {
+    return {};
+  }
+}
+
 const ordered = orderedStudies();
-const studies = ordered.map((source) => {
+// chart.csv column of each study's first exported plot: after time and OHLC, studies in export order.
+const csvOffsets = [];
+ordered.reduce((offset, source) => {
+  csvOffsets.push(offset);
+  return offset + exportedPlots(source.metaInfo()).length;
+}, 5);
+const studies = ordered.map((source, studyIndex) => {
   const meta = source.metaInfo();
   const tables = new Map();
   for (const cell of primitives(source, 'dwgtablecells', 'tableCells')) {
@@ -66,9 +91,23 @@ const studies = ordered.map((source) => {
   } catch (e) {
     inputs = null;
   }
+  const liveStyles = plotStyles(source);
+  const plots = exportedPlots(meta).map((p, i) => {
+    const plot = meta.plots[p.column - 1];
+    const style = (meta.styles || {})[plot.id] || {};
+    const live = liveStyles[plot.id] || {};
+    return {
+      id: plot.id, title: p.title, type: plot.type, csvColumn: csvOffsets[studyIndex] + i,
+      plotType: live.plottype === undefined ? null : live.plottype,
+      location: live.location === undefined ? null : live.location,
+      color: live.color === undefined ? null : live.color,
+      text: typeof style.text === 'string' && style.text !== '' ? style.text : null,
+      size: style.size || null, hidden: style.isHidden === true,
+    };
+  });
   return {
     id: String(source.id()), name: studyName(source), pane: paneIndexOf(source), status: studyStatus(source), inputs,
-    tables: Array.from(tables, ([id, rows]) => ({ id, rows })), labels, lines, boxes, lastValues,
+    tables: Array.from(tables, ([id, rows]) => ({ id, rows })), labels, lines, boxes, lastValues, plots,
   };
 });
 
