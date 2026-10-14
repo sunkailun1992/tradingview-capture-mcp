@@ -13,7 +13,7 @@
 - **What it does:** starts TradingView Desktop with a loopback-only DevTools port, switches one layout through the TradingView codes you pass in, and writes per symbol: the chart as TradingView renders it (`image.png`), a CSV with the same columns as TradingView's own "Export chart data" (`chart.csv`), and the indicators' tables, labels, lines, boxes and drawings (`data.json`).
 - **What it does not do:** choose symbols, analyse anything, or upload anything. The caller decides what to capture and how to check and use the data.
 - **Requirements:** macOS, a logged-in TradingView Desktop that is fully quit before a capture (Cmd+Q; full screen or not makes no difference, the tool starts it with its own debugging port), Python 3.12+ and uv.
-- **Use it:** register `uv --directory <repo> run tradingview-capture mcp` as a stdio MCP server, call `capture_start`, poll `capture_status`, then read with `batch_summary`, `symbol_data` and `image_crop`.
+- **Use it:** install with `uv tool install git+https://github.com/sunkailun1992/tradingview-capture-mcp`, register `~/.local/bin/tradingview-capture mcp` (absolute path) as a stdio MCP server, call `capture_start`, poll `capture_status`, then read with `batch_summary`, `symbol_data` and `image_crop`. Update with `uv tool upgrade tradingview-capture-mcp`.
 
 ## 它做什么
 
@@ -39,10 +39,16 @@
 
 ## 安装与配置
 
+用 uv 装一份独立副本，命令 `tradingview-capture` 会出现在 `~/.local/bin`：
+
 ```bash
-git clone https://github.com/sunkailun1992/tradingview-capture-mcp.git
-cd tradingview-capture-mcp
-uv sync
+uv tool install git+https://github.com/sunkailun1992/tradingview-capture-mcp
+```
+
+MCP 跑的是这份副本，不是开发目录，所以在仓库里切分支、改代码不会影响正在用的 MCP。`main` 有了新提交后更新：
+
+```bash
+uv tool upgrade tradingview-capture-mcp
 ```
 
 本机配置写在 `~/.config/tradingview-capture-mcp/config.toml`，权限设为 600：
@@ -55,19 +61,14 @@ app_path = "/Applications/TradingView.app"    # 可选
 
 ## 注册到 Claude Code 与 Codex
 
-Claude Code：
+两边都写可执行文件的绝对路径（下面的 `<home>` 换成你的 home 目录），桌面应用启动 MCP 时不一定带着 shell 的 PATH：
 
 ```bash
-claude mcp add --scope user tradingview-capture -- uv --directory <仓库路径> run tradingview-capture mcp
+claude mcp add --scope user tradingview-capture -- <home>/.local/bin/tradingview-capture mcp
+codex mcp add tradingview-capture -- <home>/.local/bin/tradingview-capture mcp
 ```
 
-Codex（`~/.codex/config.toml`）：
-
-```toml
-[mcp_servers.tradingview-capture]
-command = "uv"
-args = ["--directory", "<仓库路径>", "run", "tradingview-capture", "mcp"]
-```
+`claude mcp get tradingview-capture` 显示 Connected、`codex mcp list` 里显示 enabled 就是注册好了；已经开着的会话要重开才看得到新工具。
 
 ## 用法
 
@@ -129,6 +130,8 @@ uv run tradingview-capture read --output-dir ~/tradingview-captures/2026-10-14 \
 ## 开发
 
 ```bash
+git clone https://github.com/sunkailun1992/tradingview-capture-mcp.git
+cd tradingview-capture-mcp
 uv sync
 git config core.hooksPath .githooks        # 提交前自动扫描私有内容
 uv run pytest -q
@@ -136,6 +139,8 @@ node --test "tests/js/*.test.mjs"
 uv run ruff check && uv run ruff format --check
 bash scripts/check-private-content.sh
 ```
+
+要让 MCP 临时跑本地改动，把注册的命令换成 `uv --directory <仓库路径> run tradingview-capture mcp`，试完再换回 `~/.local/bin/tradingview-capture mcp`。
 
 规则与阅读顺序见 [AGENTS.md](AGENTS.md) 和 [docs/ai-coding/](docs/ai-coding/README.md)，参与方式见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
