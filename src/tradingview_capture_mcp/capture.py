@@ -240,7 +240,8 @@ def run_capture(
                 )
             original = _settle_current_chart(driver, request, sleep=sleep, clock=clock)
             try:
-                for index, code in enumerate(todo):
+                checked = False  # the self-check runs until one symbol has reached extraction
+                for code in todo:
                     progress.update(current=code)
                     try:
                         result = capture_symbol(
@@ -250,13 +251,14 @@ def run_capture(
                             code,
                             attempt=attempt,
                             attempt_dir=attempt_dir,
-                            self_check=index == 0,
+                            self_check=not checked,
                             info=info,
                             sleep=sleep,
                             clock=clock,
                         )
+                        checked = True
                     except CaptureError as exc:
-                        if index == 0 and exc.code == TV_INTERNALS_CHANGED:
+                        if not checked and exc.code == TV_INTERNALS_CHANGED:
                             raise
                         result = {
                             "symbol": code,
@@ -491,7 +493,7 @@ def capture_symbol(
         if failed:
             raise CaptureError(
                 TV_INTERNALS_CHANGED,
-                "the self-check on the first symbol failed",
+                f"the self-check failed on {code}",
                 {"failedChecks": failed, "missingStudies": missing},
             )
     if not same_symbol(str(identity.get("symbol") or ""), code):

@@ -11,6 +11,18 @@ function check(name, fn) {
 }
 
 const TV = window.TradingViewApi;
+const PRIMITIVE_KEYS = { dwgtablecells: 'tableCells', dwglabels: 'labels', dwglines: 'lines', dwgboxes: 'boxes' };
+
+// Follows the same path the readers use. null: none of this kind on the chart; a number: how many;
+// 'broken': the collection exists but the inner map the readers need is gone.
+function primitiveCount(all, collection) {
+  if (!all || !all[collection] || typeof all[collection].get !== 'function') return 'broken';
+  const outer = all[collection].get(PRIMITIVE_KEYS[collection]);
+  if (!outer) return null;
+  const inner = typeof outer.get === 'function' ? outer.get(false) || outer : outer;
+  const byId = inner && inner._primitivesDataById;
+  return byId && typeof byId.size === 'number' ? byId.size : 'broken';
+}
 let chart = null;
 let model = null;
 check('activeChart', () => {
@@ -29,6 +41,11 @@ check('mainSeriesBars', () => {
 });
 check('dataSources', () => model.model().dataSources().length);
 check('panes', () => model.model().panes().length);
+check('studyCount', () => {
+  const ids = new Set(chart.getAllStudies().map((s) => String(s.id)));
+  const matched = model.model().dataSources().filter((s) => typeof s.id === 'function' && ids.has(String(s.id()))).length;
+  return { public: ids.size, matched };
+});
 check('studies', () => {
   const ids = new Set(chart.getAllStudies().map((s) => String(s.id)));
   return model.model().dataSources()
@@ -45,8 +62,17 @@ check('studies', () => {
         collections: all
           ? ['dwgtablecells', 'dwglabels', 'dwglines', 'dwgboxes'].filter((k) => all[k] && typeof all[k].get === 'function')
           : [],
+        primitives: Object.fromEntries(Object.keys(PRIMITIVE_KEYS).map((c) => [c, primitiveCount(all, c)])),
       };
     });
 });
-check('shapes', () => chart.getAllShapes().map((s) => s.name));
+check('shapes', () => chart.getAllShapes().map((s) => {
+  let points = 'missing';
+  try {
+    points = typeof chart.getShapeById(s.id)._source.points;
+  } catch (e) {
+    points = 'error';
+  }
+  return { name: s.name, points };
+}));
 return report;

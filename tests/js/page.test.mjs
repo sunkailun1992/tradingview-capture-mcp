@@ -120,6 +120,10 @@ test('alive and diagnose never throw', async () => {
   const studies = report.checks.find((c) => c.name === 'studies').detail;
   assert.equal(studies.length, 3);
   assert.deepEqual(studies[0].collections, ['dwgtablecells', 'dwglabels', 'dwglines', 'dwgboxes']);
+  const assist = studies.find((s) => s.plots === 4); // diagnose lists studies in the chart's internal order
+  assert.deepEqual(assist.primitives, { dwgtablecells: 2, dwglabels: 1, dwglines: 1, dwgboxes: 0 });
+  assert.deepEqual(report.checks.find((c) => c.name === 'studyCount').detail, { public: 3, matched: 3 });
+  assert.deepEqual(report.checks.find((c) => c.name === 'shapes').detail, [{ name: 'fib_retracement', points: 'function' }]);
 });
 
 test('common throws a recognisable error when the chart API is missing', async () => {

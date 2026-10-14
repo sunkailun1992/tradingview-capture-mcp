@@ -104,6 +104,14 @@ def test_the_self_check_stops_the_batch_when_the_first_symbol_lacks_a_required_s
     assert chart.symbol == "SSE_DLY:000001"
 
 
+def test_the_self_check_moves_to_the_next_symbol_when_the_first_never_reaches_extraction(config):
+    chart = FakeChart(unknown={SYMBOLS[0]}, missing_study=(SYMBOLS[1], "Alpha"))
+    summary, _, _ = capture(config, make_request(config), chart)
+    assert summary["state"] == "stopped", summary
+    assert summary["error"]["code"] == "TV_INTERNALS_CHANGED"
+    assert summary["error"]["detail"]["failedChecks"] == ["requiredStudies"]
+
+
 def test_later_failures_are_recorded_and_the_batch_goes_on(config):
     chart = FakeChart(missing_study=(SYMBOLS[1], "Alpha"), never_ready={SYMBOLS[2]})
     summary, _, _ = capture(config, make_request(config), chart)

@@ -18,6 +18,7 @@ REQUIRED_CHECKS = (
     "mainSeriesBars",
     "dataSources",
     "panes",
+    "studyCount",
     "studies",
     "shapes",
 )
@@ -37,8 +38,13 @@ def problems(report: dict[str, Any]) -> list[str]:
         bars = checks["mainSeriesBars"].get("detail") or {}
         if not all(bars.get(key) == "function" for key in ("firstIndex", "lastIndex", "valueAt")):
             found.append("mainSeriesBars.methods")
+    if "studyCount" not in found:
+        counts = checks["studyCount"].get("detail") or {}
+        if counts.get("matched", 0) < counts.get("public", 0):
+            found.append("studies.unmatched")
     if "studies" not in found:
-        for study in checks["studies"].get("detail") or []:
+        studies = checks["studies"].get("detail") or []
+        for study in studies:
             data = study.get("data") or {}
             if not (
                 study.get("hasMetaInfo")
@@ -48,6 +54,12 @@ def problems(report: dict[str, Any]) -> list[str]:
             ):
                 found.append("studies.shape")
                 break
+        if any("broken" in (study.get("primitives") or {}).values() for study in studies):
+            found.append("studies.primitives")
+    if "shapes" not in found:
+        shapes = checks["shapes"].get("detail") or []
+        if any(not isinstance(shape, dict) or shape.get("points") != "function" for shape in shapes):
+            found.append("shapes.points")
     return found
 
 

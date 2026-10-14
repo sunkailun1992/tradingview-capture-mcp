@@ -12,18 +12,31 @@ def test_a_healthy_report_has_no_problems():
     assert problems(OK_DIAGNOSE) == []
 
 
+def check(report, name):
+    return next(c for c in report["checks"] if c["name"] == name)
+
+
 @pytest.mark.parametrize(
     "mutate, expected",
     [
+        (lambda r: check(r, "activeChart").update(ok=False, error="gone"), "activeChart"),
+        (lambda r: check(r, "activeChart").update(detail=["setSymbol"]), "activeChart.methods"),
         (
-            lambda r: r["checks"].__setitem__(0, {"name": "activeChart", "ok": False, "error": "gone"}),
-            "activeChart",
+            lambda r: check(r, "takeClientScreenshot").update(detail="undefined"),
+            "takeClientScreenshot.function",
         ),
-        (lambda r: r["checks"][0].__setitem__("detail", ["setSymbol"]), "activeChart.methods"),
-        (lambda r: r["checks"][1].__setitem__("detail", "undefined"), "takeClientScreenshot.function"),
-        (lambda r: r["checks"][3]["detail"].__setitem__("valueAt", "undefined"), "mainSeriesBars.methods"),
-        (lambda r: r["checks"][6]["detail"][0].__setitem__("collections", ["dwglabels"]), "studies.shape"),
-        (lambda r: r["checks"].pop(), "shapes"),
+        (
+            lambda r: check(r, "mainSeriesBars")["detail"].update(valueAt="undefined"),
+            "mainSeriesBars.methods",
+        ),
+        (lambda r: check(r, "studies")["detail"][0].update(collections=["dwglabels"]), "studies.shape"),
+        (
+            lambda r: check(r, "studies")["detail"][0]["primitives"].update(dwglabels="broken"),
+            "studies.primitives",
+        ),
+        (lambda r: check(r, "studyCount")["detail"].update(matched=0), "studies.unmatched"),
+        (lambda r: check(r, "shapes")["detail"][0].update(points="undefined"), "shapes.points"),
+        (lambda r: r["checks"].remove(check(r, "shapes")), "shapes"),
     ],
 )
 def test_each_missing_piece_is_named(mutate, expected):

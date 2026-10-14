@@ -19,6 +19,7 @@ OK_DIAGNOSE = {
         },
         {"name": "dataSources", "ok": True, "detail": 4},
         {"name": "panes", "ok": True, "detail": 2},
+        {"name": "studyCount", "ok": True, "detail": {"public": 1, "matched": 1}},
         {
             "name": "studies",
             "ok": True,
@@ -30,10 +31,11 @@ OK_DIAGNOSE = {
                     "status": "function",
                     "data": {"size": 2, "valueAt": "function"},
                     "collections": ["dwgtablecells", "dwglabels", "dwglines", "dwgboxes"],
+                    "primitives": {"dwgtablecells": 3, "dwglabels": 0, "dwglines": None, "dwgboxes": None},
                 }
             ],
         },
-        {"name": "shapes", "ok": True, "detail": []},
+        {"name": "shapes", "ok": True, "detail": [{"name": "fib_retracement", "points": "function"}]},
     ],
 }
 CSV = "time,open,high,low,close,Quarter\n1000,1,2,0.5,1.5,10.5\n2000,1.5,2.5,1,2,11.25"
