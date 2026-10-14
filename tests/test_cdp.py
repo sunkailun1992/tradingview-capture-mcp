@@ -1,8 +1,9 @@
 import json
 import threading
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 
 import pytest
+from loopback_http import LoopbackHTTPServer
 from websockets.sync.server import serve
 
 from tradingview_capture_mcp import cdp
@@ -135,7 +136,7 @@ def test_http_json_reads_loopback():
         def log_message(self, *args):
             pass
 
-    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    server = LoopbackHTTPServer(("127.0.0.1", 0), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     try:
         assert cdp.http_json(server.server_address[1], "/json/version") == {"path": "/json/version"}

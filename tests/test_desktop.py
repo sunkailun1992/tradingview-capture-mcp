@@ -2,6 +2,7 @@ import socket
 import stat
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -10,7 +11,8 @@ from tradingview_capture_mcp.config import Config
 from tradingview_capture_mcp.errors import CaptureError
 
 FAKE_APP = """import json, sys
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler
+from loopback_http import LoopbackHTTPServer
 port = int([a for a in sys.argv[1:] if a.startswith("--remote-debugging-port=")][0].split("=", 1)[1])
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -22,7 +24,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
     def log_message(self, *args):
         pass
-HTTPServer(("127.0.0.1", port), Handler).serve_forever()
+LoopbackHTTPServer(("127.0.0.1", port), Handler).serve_forever()
 """
 
 
@@ -37,7 +39,9 @@ def fake_app(tmp_path, monkeypatch):
     app = tmp_path / "TradingView.app"
     binary = app / "Contents" / "MacOS" / "TradingView"
     binary.parent.mkdir(parents=True)
-    binary.write_text(f"#!{sys.executable}\n" + FAKE_APP, encoding="utf-8")
+    # The fake imports tests/loopback_http.py, so put this folder on its path.
+    prelude = f"#!{sys.executable}\nimport sys; sys.path.insert(0, {str(Path(__file__).parent)!r})\n"
+    binary.write_text(prelude + FAKE_APP, encoding="utf-8")
     binary.chmod(binary.stat().st_mode | stat.S_IXUSR)
     monkeypatch.setattr(desktop, "running_pids", lambda process_name="TradingView": [])
     return Config(app_path=app, debug_port=free_port(), output_root=tmp_path)
