@@ -20,8 +20,12 @@ INSTRUCTIONS = (
     "Exports TradingView Desktop chart data and screenshots into files and never uploads anything. "
     "The caller chooses the symbols and decides how to check and use the data. capture_start returns "
     "at once with a job id; poll capture_status until the state is finished, failed or crashed, then "
-    "read the batch with batch_summary, symbol_data and image_crop. Errors carry a stable code such as "
-    "TV_ALREADY_RUNNING or TV_INTERNALS_CHANGED."
+    "read the batch with batch_summary, symbol_data and image_crop. Each captured symbol carries readiness "
+    "evidence in its batch_summary entry and in symbol_data's capture block: resolvedSymbol (the code the "
+    "chart showed, which can be a delayed feed such as an exchange ending in _DLY), reswitches, "
+    "unchangedAfterSwitch (studies whose output still equalled the previous symbol's after the grace period; "
+    "check them against the image) and digestMovingAtRead (studies still changing at the read, as in an open "
+    "market). Errors carry a stable code such as TV_ALREADY_RUNNING or TV_INTERNALS_CHANGED."
 )
 
 app = MCPServer(name="tradingview-capture", version=__version__, instructions=INSTRUCTIONS)

@@ -59,6 +59,13 @@ def make_batch(out: Path, symbol: str, *, csv_text: str = DEFAULT_CSV, png: byte
         folder / "capture.json",
         {
             "captureMethod": "CDP_DESKTOP",
+            "resolvedSymbol": symbol,
+            "readiness": {
+                "waitedSec": 10.0,
+                "reswitches": 0,
+                "unchangedAfterSwitch": ["Alpha"],
+                "digestMovingAtRead": [],
+            },
             "desktop": {"version": "3.4.1"},
             "times": {"finishedAt": {"iso": "2026-10-14T02:00:00.000+08:00", "unix": 1791914400.0}},
             "files": {},

@@ -52,6 +52,8 @@ def test_symbol_data_defaults(batch):
         "lastValues": [["Quarter", 11.25]],
     }
     assert data["capture"]["captureMethod"] == "CDP_DESKTOP"
+    assert data["capture"]["resolvedSymbol"] == SYMBOL
+    assert data["capture"]["readiness"]["unchangedAfterSwitch"] == ["Alpha"]
 
 
 def test_symbol_data_parts_and_series(batch):

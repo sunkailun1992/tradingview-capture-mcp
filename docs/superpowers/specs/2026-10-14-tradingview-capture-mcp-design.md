@@ -112,16 +112,16 @@ MCP 工具名和参数名用 snake_case，输出文件里的 JSON 键用 camelCa
 <outputDir>/
 ├── batch.json              # 开工参数、symbols 原文与 SHA256、工具版本
 ├── job.json                # 后台任务进度（运行中持续更新）
-├── capture-manifest.json   # 每个品种的状态、文件 SHA256、时间；desktopVersionChanged
+├── capture-manifest.json   # 每个品种的状态、文件 SHA256、时间、就绪证据摘要；startup；desktopVersionChanged
 ├── attempts/               # 续跑时每次尝试的记录
 └── raw/<SAFE_CODE>/
     ├── image.png           # TradingView 渲染的图表
     ├── chart.csv           # 由曲线数据按原生列生成；time 为 UNIX 秒
     ├── data.json           # 结构化数据
-    └── capture.json        # 各步时间、文件 SHA256、版本、就绪证据、采集方式
+    └── capture.json        # 各步时间、文件 SHA256、版本、就绪证据摘要、采集方式
 ```
 
-- `capture.json` 里 `captureMethod` 固定为 `CDP_DESKTOP`，并写明 PNG 来自页面渲染接口、CSV 由曲线数据生成，不是菜单下载的文件；另有 `tool`（名称、版本）、`desktop`（桌面版版本）、`resolvedSymbol`（图表实际显示的代码，可能是延迟行情名）。
+- `capture.json` 里 `captureMethod` 固定为 `CDP_DESKTOP`，并写明 PNG 来自页面渲染接口、CSV 由曲线数据生成，不是菜单下载的文件；另有 `tool`（名称、版本）、`desktop`（桌面版版本）、`resolvedSymbol`（图表实际显示的代码，可能是延迟行情名）、`readiness`（就绪证据摘要：`waitedSec`、`reswitches`、`unchangedAfterSwitch`、`digestMovingAtRead`）。manifest 里每个成功品种的条目也带 `resolvedSymbol` 和同一份摘要，调用方不用逐个打开文件就能看出哪些品种需要重点核对。
 - `data.json` 的顶层是 `identity`、`studies[]`（每项含 `tables`、`labels`、`lines`、`boxes`，以及每条曲线的最后值）、`drawings[]`、`readiness`（读取次数 `polls`、等待秒数 `waitedSec`、最后一根 K 线时间 `lastBarTime`、重新切换次数 `reswitches`、`unchangedAfterSwitch`、`digestMovingAtRead`，以及就绪那一刻各指标的 ID、名称、状态、最后一根时间和输出指纹）。逐 K 的曲线值只放在 `chart.csv`，不在 `data.json` 里重复。
 - 文件一律 0600，目录 0700；写入用 `O_CREAT | O_EXCL`。
 - 时间同时写两种：带时区的 ISO 8601（本机时区）和 UNIX 秒。
@@ -134,7 +134,7 @@ MCP 工具名和参数名用 snake_case，输出文件里的 JSON 键用 camelCa
 | `capture_retry` | `tradingview-capture capture --retry-failed` | 只重跑已有批次里失败和未完成的品种，立即返回任务 ID |
 | `capture_status` | `tradingview-capture status` | 进度：完成数 / 总数、当前品种、失败原因、版本是否变化 |
 | `batch_summary` | `tradingview-capture status --summary` | 一批的总览：每个品种的状态和文件 SHA256 |
-| `symbol_data` | `tradingview-capture read` | 读某个品种的 `data.json`，可以只取 `identity` / `tables` / `labels` / `lines` / `drawings`；要曲线值时从 `chart.csv` 取最近 N 根 |
+| `symbol_data` | `tradingview-capture read` | 读某个品种的 `data.json`，可以只取 `identity` / `tables` / `labels` / `lines` / `drawings`；要曲线值时从 `chart.csv` 取最近 N 根。默认返回的 `capture` 块带采集时间、方式、`resolvedSymbol`、就绪证据摘要和文件 SHA256 |
 | `image_crop` | `tradingview-capture crop` | 按像素框从 `image.png` 裁图。MCP 返回 PNG 图像内容；另存为文件只在命令行 `crop --out`（0600） |
 | `diagnose` | `tradingview-capture doctor` | 只读的兼容诊断：每条提取路径是否可用、失效点附近的字段名和数量、桌面版版本。不输出表格原文这类内容数据 |
 

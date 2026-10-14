@@ -523,6 +523,13 @@ def capture_symbol(
         raise CaptureError(OUTPUT_EXISTS, "this symbol already has a capture", {"symbol": code})
     partial = out / "raw" / f".{name}.partial-{attempt}"
     make_dir_new(partial)
+    # The evidence a caller should look at first; the full readiness record stays in data.json.
+    evidence = {
+        "waitedSec": round(waited, 3),
+        "reswitches": reswitches,
+        "unchangedAfterSwitch": list(verdict.unchanged),
+        "digestMovingAtRead": list(verdict.moving),
+    }
     try:
         csv_bytes = str(series.get("csv") or "").encode("utf-8")
         data = {
@@ -575,6 +582,7 @@ def capture_symbol(
             "csvSource": CSV_SOURCE,
             "symbol": code,
             "resolvedSymbol": identity.get("symbol"),
+            "readiness": evidence,
             "layout": request.layout,
             "timeframe": request.timeframe,
             "attempt": attempt,
@@ -598,6 +606,8 @@ def capture_symbol(
         "symbol": code,
         "safeName": name,
         "status": "ok",
+        "resolvedSymbol": identity.get("symbol"),
+        "readiness": evidence,
         "attempt": attempt,
         "captureSha256": capture_sha,
         "finishedAt": finished_at,

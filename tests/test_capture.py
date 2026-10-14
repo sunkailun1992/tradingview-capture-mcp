@@ -151,6 +151,24 @@ def test_a_symbol_served_from_a_delayed_feed_is_accepted(config):
     assert (record["symbol"], record["resolvedSymbol"]) == (SYMBOLS[2], "NYMEX_DL:CL1!")
 
 
+def test_the_manifest_and_capture_json_carry_the_readiness_evidence(config):
+    chart = FakeChart(resolves={SYMBOLS[2]: "NYMEX_DL:CL1!"}, revert_once={SYMBOLS[1]}, static_study="Beta")
+    capture(config, make_request(config), chart)
+    out = config.output_root / "batch"
+    entries = {e["symbol"]: e for e in read_json(out / "capture-manifest.json")["symbols"]}
+    assert entries[SYMBOLS[2]]["resolvedSymbol"] == "NYMEX_DL:CL1!"
+    assert entries[SYMBOLS[1]]["readiness"]["reswitches"] == 1
+    assert entries[SYMBOLS[0]]["readiness"]["unchangedAfterSwitch"] == ["Beta"]
+    assert set(entries[SYMBOLS[0]]["readiness"]) == {
+        "waitedSec",
+        "reswitches",
+        "unchangedAfterSwitch",
+        "digestMovingAtRead",
+    }
+    record = read_json(out / "raw" / safe_name(SYMBOLS[1]) / "capture.json")
+    assert record["readiness"] == entries[SYMBOLS[1]]["readiness"]
+
+
 def test_the_restored_chart_may_rename_its_symbol_while_it_loads(config):
     chart = FakeChart(start_alias=("SSE:000001", 3))
     summary, _, _ = capture(config, make_request(config), chart)

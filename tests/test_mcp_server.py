@@ -70,6 +70,12 @@ def test_instructions_state_the_export_only_boundary():
     assert "caller chooses the symbols" in text
 
 
+def test_instructions_point_at_the_readiness_evidence():
+    text = app.instructions
+    for field in ("resolvedSymbol", "reswitches", "unchangedAfterSwitch", "digestMovingAtRead"):
+        assert field in text
+
+
 def test_capture_start_offers_no_viewport_override():
     tools = {tool.name: tool for tool in asyncio.run(app.list_tools())}
     parameters = set(tools["capture_start"].input_schema["properties"])

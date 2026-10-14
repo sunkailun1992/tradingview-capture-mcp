@@ -57,6 +57,8 @@ def symbol_data(
         "capture": {
             "capturedAt": (capture.get("times") or {}).get("finishedAt"),
             "captureMethod": capture.get("captureMethod"),
+            "resolvedSymbol": capture.get("resolvedSymbol"),
+            "readiness": capture.get("readiness"),
             "desktopVersion": (capture.get("desktop") or {}).get("version"),
             "files": capture.get("files"),
         },

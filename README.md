@@ -100,7 +100,7 @@ uv run tradingview-capture read --output-dir ~/tradingview-captures/2026-10-14 \
 <output_dir>/
 ├── batch.json              # 开工参数、品种清单与其 SHA256、工具版本
 ├── job.json                # 后台任务进度
-├── capture-manifest.json   # 每个品种的状态与文件 SHA256；桌面版版本是否变化
+├── capture-manifest.json   # 每个品种的状态、文件 SHA256 与就绪证据摘要；桌面版版本是否变化
 ├── attempts/               # 每次尝试的记录（含续跑）
 └── raw/<代码安全名>/        # 例如 BINANCE_BTCUSDT.P
     ├── image.png
