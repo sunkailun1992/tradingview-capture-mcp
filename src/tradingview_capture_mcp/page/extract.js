@@ -64,6 +64,8 @@ const studies = ordered.map((source) => {
   };
 });
 
+// Fib retracement levels are measured from the second point back toward the first (checked against
+// TradingView's own labels on a live chart); `reverse` swaps the two points.
 const drawings = chart.getAllShapes().map((shape) => {
   const api = chart.getShapeById(shape.id);
   let points = [];
@@ -78,12 +80,21 @@ const drawings = chart.getAllShapes().map((shape) => {
   } catch (e) {
     props = {};
   }
+  const reverse = props.reverse === true;
+  const [first, second] = points;
+  const span = shape.name === 'fib_retracement' && first && second && first.price !== null && second.price !== null
+    ? (reverse ? { from: first.price, to: second.price } : { from: second.price, to: first.price })
+    : null;
   const levels = [];
   for (let i = 1; i <= 24; i += 1) {
     const level = props['level' + i];
-    if (Array.isArray(level)) levels.push({ coeff: num(level[0]), visible: level[2] === true, text: text(level[3]) || '' });
+    if (!Array.isArray(level)) continue;
+    const coeff = num(level[0]);
+    // Rounded to 10 decimals so 200 + (100 - 200) * 0.382 reads 161.8 rather than 161.79999999999998.
+    const price = span && coeff !== null ? Math.round((span.from + (span.to - span.from) * coeff) * 1e10) / 1e10 : null;
+    levels.push({ coeff, visible: level[2] === true, text: text(level[3]) || '', price });
   }
-  return { id: String(shape.id), type: shape.name, points, levels, reverse: props.reverse === true };
+  return { id: String(shape.id), type: shape.name, points, levels, reverse };
 });
 
 function csvCell(value) {

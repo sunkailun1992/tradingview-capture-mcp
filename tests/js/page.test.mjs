@@ -69,7 +69,7 @@ test('extract returns tables, labels, lines, last values, drawings and identity'
   assert.deepEqual(result.drawings, [{
     id: 's1', type: 'fib_retracement',
     points: [{ index: 0, time: 1000, price: 1 }, { index: 1, time: 2000, price: 2 }],
-    levels: [{ coeff: 0, visible: true, text: '' }, { coeff: 0.236, visible: false, text: '' }], reverse: false,
+    levels: [{ coeff: 0, visible: true, text: '', price: 2 }, { coeff: 0.236, visible: false, text: '', price: 1.764 }], reverse: false,
   }]);
   assert.deepEqual(result.identity, {
     symbol: 'BINANCE:BTCUSDT.P', resolution: '1D', description: 'Bitcoin / TetherUS', exchange: 'Binance',
