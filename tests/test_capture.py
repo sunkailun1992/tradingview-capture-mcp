@@ -136,6 +136,20 @@ def test_a_switch_the_layout_undoes_is_made_again(config):
     assert data["readiness"]["reswitches"] == 1
 
 
+def test_a_symbol_served_from_a_delayed_feed_is_accepted(config):
+    summary, _, _ = capture(config, make_request(config), FakeChart(resolves={SYMBOLS[2]: "NYMEX_DL:CL1!"}))
+    assert summary["totals"]["succeeded"] == 3, summary
+    record = read_json(config.output_root / "batch" / "raw" / safe_name(SYMBOLS[2]) / "capture.json")
+    assert (record["symbol"], record["resolvedSymbol"]) == (SYMBOLS[2], "NYMEX_DL:CL1!")
+
+
+def test_the_restored_chart_may_rename_its_symbol_while_it_loads(config):
+    chart = FakeChart(start_alias=("SSE:000001", 3))
+    summary, _, _ = capture(config, make_request(config), chart)
+    assert summary["totals"]["succeeded"] == 3, summary
+    assert chart.symbol == "SSE_DLY:000001"
+
+
 def test_an_unknown_symbol_fails_alone(config):
     summary, _, _ = capture(config, make_request(config), FakeChart(unknown={SYMBOLS[1]}))
     assert [(f["symbol"], f["code"]) for f in summary["failures"]] == [(SYMBOLS[1], "SYMBOL_NOT_FOUND")]

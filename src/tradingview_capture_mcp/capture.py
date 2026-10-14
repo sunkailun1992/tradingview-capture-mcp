@@ -21,6 +21,7 @@ from .errors import (
     INTERNAL_ERROR,
     INVALID_ARGUMENT,
     NOT_FOUND,
+    NOT_READY_TIMEOUT,
     OUTPUT_EXISTS,
     STUDY_MISSING,
     SYMBOL_NOT_FOUND,
@@ -28,7 +29,7 @@ from .errors import (
     CaptureError,
 )
 from .images import png_size
-from .readiness import ReadySnapshot, wait_until_ready
+from .readiness import ReadySnapshot, judge, wait_until_ready
 from .store import (
     BatchLock,
     dumps_json,
@@ -43,7 +44,7 @@ from .store import (
     write_json_new,
     write_new,
 )
-from .validation import SYMBOL_RE, TIMEFRAME_RE, check_layout
+from .validation import SYMBOL_RE, TIMEFRAME_RE, check_layout, same_symbol
 
 CAPTURE_METHOD = "CDP_DESKTOP"
 PNG_SOURCE = "TradingViewApi.takeClientScreenshot"
@@ -362,18 +363,31 @@ def _settle_current_chart(
 ) -> dict[str, Any]:
     """Wait until the chart TradingView restored at startup has finished loading.
 
-    A switch made while the layout is still loading is undone when the layout's own load completes."""
-    first = ReadySnapshot.from_page(driver.run("ready"))
-    _, snapshot, _, _ = wait_until_ready(
-        lambda: ReadySnapshot.from_page(driver.run("ready")),
-        target=first.symbol,
-        timeframe=first.resolution or request.timeframe,
-        before_switch=None,
-        timeout=request.ready_timeout_sec,
-        sleep=sleep,
-        clock=clock,
-    )
-    return {"symbol": snapshot.symbol, "resolution": snapshot.resolution}
+    A switch made while the layout is still loading is undone when the layout's own load completes, and the
+    restored symbol can be renamed while it loads (for example to its delayed feed), so this follows whatever
+    the chart shows until two reads agree."""
+    start = clock()
+    previous: ReadySnapshot | None = None
+    while True:
+        current = ReadySnapshot.from_page(driver.run("ready"))
+        verdict = judge(
+            target=current.symbol,
+            timeframe=current.resolution or request.timeframe,
+            current=current,
+            previous=previous,
+            before_switch=None,
+            elapsed=clock() - start,
+        )
+        if current.symbol and verdict.ready:
+            return {"symbol": current.symbol, "resolution": current.resolution}
+        if clock() - start >= request.ready_timeout_sec:
+            raise CaptureError(
+                NOT_READY_TIMEOUT,
+                "the restored chart did not finish loading",
+                {"reason": verdict.reason, "symbol": current.symbol},
+            )
+        previous = current
+        sleep(1.0)
 
 
 def _restore(driver: ChartDriver, original: Any, request: CaptureRequest) -> None:
@@ -407,7 +421,7 @@ def capture_symbol(
     before = ReadySnapshot.from_page(driver.run("ready"))
     switched = driver.run("switch", {"symbol": code, "timeframe": request.timeframe}, timeout=40.0) or {}
     after = switched.get("after") or {}
-    if switched.get("timedOut") or after.get("symbol") != code:
+    if switched.get("timedOut") or not same_symbol(str(after.get("symbol") or ""), code):
         raise CaptureError(SYMBOL_NOT_FOUND, "the chart did not switch to this symbol", {"after": after})
     switched_at = stamp()
     reswitches = 0
@@ -415,7 +429,7 @@ def capture_symbol(
     def read() -> ReadySnapshot:
         nonlocal reswitches
         snapshot = ReadySnapshot.from_page(driver.run("ready"))
-        if snapshot.symbol != code and reswitches < MAX_RESWITCHES:
+        if not same_symbol(snapshot.symbol, code) and reswitches < MAX_RESWITCHES:
             # The layout can put its own symbol back right after a switch; ask again.
             reswitches += 1
             driver.run("switch", {"symbol": code, "timeframe": request.timeframe}, timeout=40.0)
@@ -464,7 +478,7 @@ def capture_symbol(
                 "the self-check on the first symbol failed",
                 {"failedChecks": failed, "missingStudies": missing},
             )
-    if identity.get("symbol") != code:
+    if not same_symbol(str(identity.get("symbol") or ""), code):
         raise CaptureError(
             SYMBOL_NOT_FOUND, "the extracted chart is not this symbol", {"symbol": identity.get("symbol")}
         )
@@ -530,6 +544,7 @@ def capture_symbol(
             "pngSource": PNG_SOURCE,
             "csvSource": CSV_SOURCE,
             "symbol": code,
+            "resolvedSymbol": identity.get("symbol"),
             "layout": request.layout,
             "timeframe": request.timeframe,
             "attempt": attempt,

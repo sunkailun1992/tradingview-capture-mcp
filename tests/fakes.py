@@ -57,6 +57,8 @@ class FakeChart:
         ticking=False,
         revert_once=(),
         diagnose_sequence=(),
+        resolves=None,
+        start_alias=None,
     ):
         self.symbol = start_symbol
         self.previous = start_symbol
@@ -78,6 +80,9 @@ class FakeChart:
         self.ticking = ticking  # live market: the forming bar changes on every read
         self.revert_once = set(revert_once)  # the first switch to these symbols is undone by the layout
         self.ticks = 0
+        self.resolves = dict(resolves or {})  # requested code -> the name TradingView serves it under
+        # (alias, reads): the restored chart first shows `alias` without bars, then resolves to start_symbol
+        self.start_alias = list(start_alias) if start_alias else None
 
     def run(self, script, args=None, *, timeout=60.0):
         self.calls.append((script, dict(args or {})))
@@ -95,6 +100,14 @@ class FakeChart:
         return self.diagnose_report
 
     def _ready(self, args):
+        if self.start_alias and self.start_alias[1] > 0:
+            self.start_alias[1] -= 1
+            return {
+                "symbol": self.start_alias[0],
+                "resolution": self.resolution,
+                "lastBarTime": None,
+                "studies": [],
+            }
         if self.loading_left > 0:
             self.loading_left -= 1
             studies = [
@@ -131,7 +144,11 @@ class FakeChart:
     def _switch(self, args):
         before = {"symbol": self.symbol, "resolution": self.resolution}
         if args["symbol"] not in self.unknown:
-            self.previous, self.symbol, self.polls = self.symbol, args["symbol"], 0
+            self.previous, self.symbol, self.polls = (
+                self.symbol,
+                self.resolves.get(args["symbol"], args["symbol"]),
+                0,
+            )
         self.resolution = args.get("timeframe") or self.resolution
         after = {"symbol": self.symbol, "resolution": self.resolution}
         if self.symbol in self.revert_once:

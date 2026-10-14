@@ -1,7 +1,7 @@
 import pytest
 
 from tradingview_capture_mcp.errors import CaptureError
-from tradingview_capture_mcp.validation import SYMBOL_RE, TIMEFRAME_RE, check_layout
+from tradingview_capture_mcp.validation import SYMBOL_RE, TIMEFRAME_RE, check_layout, same_symbol
 
 
 @pytest.mark.parametrize("code", ["BINANCE:BTCUSDT.P", "NYMEX:CL1!", "SSE_DLY:000001", "OANDA:XAUUSD"])
@@ -29,3 +29,18 @@ def test_check_layout():
     with pytest.raises(CaptureError) as err:
         check_layout("../x")
     assert err.value.code == "INVALID_ARGUMENT"
+
+
+@pytest.mark.parametrize(
+    "actual, requested, expected",
+    [
+        ("BINANCE:BTCUSDT.P", "BINANCE:BTCUSDT.P", True),
+        ("NYMEX_DL:CL1!", "NYMEX:CL1!", True),
+        ("SSE_DLY:000001", "SSE:000001", True),
+        ("BINANCE:ETHUSDT.P", "BINANCE:BTCUSDT.P", False),
+        ("NYMEX_XX:CL1!", "NYMEX:CL1!", False),
+        ("", "BINANCE:BTCUSDT.P", False),
+    ],
+)
+def test_same_symbol_accepts_delayed_feeds(actual, requested, expected):
+    assert same_symbol(actual, requested) is expected

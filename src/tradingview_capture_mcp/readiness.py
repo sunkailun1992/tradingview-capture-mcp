@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .errors import NOT_READY_TIMEOUT, CaptureError
+from .validation import same_symbol
 
 STATUS_COMPLETED = 2
 
@@ -80,7 +81,7 @@ def judge(
 ) -> ReadyVerdict:
     """Ready means: right symbol and resolution, every study finished on the last bar, two equal reads,
     and the studies' output differs from the previous symbol's (or the grace period has passed)."""
-    if current.symbol != target:
+    if not same_symbol(current.symbol, target):
         return ReadyVerdict(False, "symbol")
     if normalize_resolution(current.resolution) != normalize_resolution(timeframe):
         return ReadyVerdict(False, "resolution")
