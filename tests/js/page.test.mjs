@@ -130,9 +130,19 @@ test('alive and diagnose never throw', async () => {
   assert.equal(studies.length, 3);
   assert.deepEqual(studies[0].collections, ['dwgtablecells', 'dwglabels', 'dwglines', 'dwgboxes']);
   const assist = studies.find((s) => s.plots === 4); // diagnose lists studies in the chart's internal order
-  assert.deepEqual(assist.primitives, { dwgtablecells: 2, dwglabels: 1, dwglines: 1, dwgboxes: 0 });
+  // No boxes: the live chart then holds an empty map where the boxes would be, which means none, not broken.
+  assert.deepEqual(assist.primitives, { dwgtablecells: 2, dwglabels: 1, dwglines: 1, dwgboxes: null });
   assert.deepEqual(report.checks.find((c) => c.name === 'studyCount').detail, { public: 3, matched: 3 });
   assert.deepEqual(report.checks.find((c) => c.name === 'shapes').detail, [{ name: 'fib_retracement', points: 'function' }]);
+});
+
+test('diagnose calls primitives broken when they sit where the readers do not look', async () => {
+  const odd = makeStudy({ id: 'o1', name: 'Odd', zorder: -10000, plots: [], rows: [[1000], [2000]] });
+  const elsewhere = new Map([[true, { _primitivesDataById: new Map([[1, { id: 1 }]]) }]]);
+  odd._graphics._primitivesCollection.dwglabels = new Map([['labels', elsewhere]]);
+  const report = await run('diagnose', {}, fixture({ panes: [[odd]], shapes: [] }));
+  const [study] = report.checks.find((c) => c.name === 'studies').detail;
+  assert.deepEqual(study.primitives, { dwgtablecells: null, dwglabels: 'broken', dwglines: null, dwgboxes: null });
 });
 
 test('common throws a recognisable error when the chart API is missing', async () => {

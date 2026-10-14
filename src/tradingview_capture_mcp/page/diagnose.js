@@ -21,7 +21,9 @@ function primitiveCount(all, collection) {
   if (!outer) return null;
   const inner = typeof outer.get === 'function' ? outer.get(false) || outer : outer;
   const byId = inner && inner._primitivesDataById;
-  return byId && typeof byId.size === 'number' ? byId.size : 'broken';
+  if (byId && typeof byId.size === 'number') return byId.size;
+  // Labels, lines and boxes sit in a map keyed by false that stays empty while a study draws none of them.
+  return inner && inner.size === 0 && typeof inner.keys === 'function' ? null : 'broken';
 }
 let chart = null;
 let model = null;

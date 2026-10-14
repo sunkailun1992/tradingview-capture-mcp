@@ -8,9 +8,14 @@ export function plotList(rows, firstIndex = 0) {
   };
 }
 
-function primitiveCollection(key, items) {
-  const byId = new Map(items.map((item) => [item.id, item]));
-  return { get: (name) => (name === key ? { get: () => ({ _primitivesDataById: byId }) } : null) };
+// Shaped like TradingView Desktop 3.4.1 (probed 2026-10-14): table cells sit directly under their key, while
+// labels, lines and boxes sit one level deeper in a map keyed by false, which stays empty while there are none.
+function primitiveCollection(key, items, nested) {
+  const collection = new Map();
+  const primitives = { _primitivesDataById: new Map(items.map((item) => [item.id, item])) };
+  if (nested) collection.set(key, new Map(items.length ? [[false, primitives]] : []));
+  else if (items.length) collection.set(key, primitives);
+  return collection;
 }
 
 export function makeStudy({ id, name, zorder, plots, rows, styles = {}, ohlcPlots, cells = [], labels = [], lines = [], boxes = [], status = 2 }) {
@@ -23,10 +28,10 @@ export function makeStudy({ id, name, zorder, plots, rows, styles = {}, ohlcPlot
     inputs: () => ({ length: 14 }),
     _graphics: {
       _primitivesCollection: {
-        dwgtablecells: primitiveCollection('tableCells', cells),
-        dwglabels: primitiveCollection('labels', labels),
-        dwglines: primitiveCollection('lines', lines),
-        dwgboxes: primitiveCollection('boxes', boxes),
+        dwgtablecells: primitiveCollection('tableCells', cells, false),
+        dwglabels: primitiveCollection('labels', labels, true),
+        dwglines: primitiveCollection('lines', lines, true),
+        dwgboxes: primitiveCollection('boxes', boxes, true),
       },
     },
   };
