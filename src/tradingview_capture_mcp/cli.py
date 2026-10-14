@@ -15,6 +15,7 @@ from .capture import CaptureRequest, run_capture
 from .config import load_config
 from .driver import RealDesktop
 from .errors import INVALID_ARGUMENT, CaptureError
+from .signals import exit_on_termination
 
 
 def _box(value: str) -> tuple[int, int, int, int]:
@@ -123,7 +124,8 @@ def main(argv: list[str] | None = None) -> int:
         serve()
         return 0
     try:
-        payload, code = _dispatch(args)
+        with exit_on_termination():
+            payload, code = _dispatch(args)
     except CaptureError as exc:
         payload, code = {"error": exc.to_dict()}, 2
     print(json.dumps(payload, ensure_ascii=False, indent=2))

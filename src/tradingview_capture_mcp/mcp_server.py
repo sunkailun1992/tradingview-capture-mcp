@@ -14,6 +14,7 @@ from . import __version__, diagnostics, jobs, results
 from .capture import CaptureRequest
 from .config import load_config
 from .errors import CaptureError
+from .signals import install_server_handlers
 
 INSTRUCTIONS = (
     "Exports TradingView Desktop chart data and screenshots into files and never uploads anything. "
@@ -109,4 +110,5 @@ def diagnose(layout: str) -> dict[str, Any]:
 
 
 def main() -> None:
+    install_server_handlers()
     app.run("stdio")

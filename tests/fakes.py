@@ -58,6 +58,7 @@ class FakeChart:
         revert_once=(),
         diagnose_sequence=(),
         resolves=None,
+        interrupt_on=None,
         start_alias=None,
     ):
         self.symbol = start_symbol
@@ -79,6 +80,7 @@ class FakeChart:
         self.ticking = ticking  # live market: the forming bar changes on every read
         self.revert_once = set(revert_once)  # the first switch to these symbols is undone by the layout
         self.ticks = 0
+        self.interrupt_on = interrupt_on  # switching to this symbol raises KeyboardInterrupt (Ctrl-C)
         self.resolves = dict(resolves or {})  # requested code -> the name TradingView serves it under
         # (alias, reads): the restored chart first shows `alias` without bars, then resolves to start_symbol
         self.start_alias = list(start_alias) if start_alias else None
@@ -135,6 +137,9 @@ class FakeChart:
         }
 
     def _switch(self, args):
+        if args["symbol"] == self.interrupt_on:
+            self.interrupt_on = None
+            raise KeyboardInterrupt
         before = {"symbol": self.symbol, "resolution": self.resolution}
         if args["symbol"] not in self.unknown:
             self.previous, self.symbol, self.polls = (

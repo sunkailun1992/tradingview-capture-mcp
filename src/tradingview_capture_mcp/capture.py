@@ -19,6 +19,7 @@ from .driver import ChartDriver, DesktopControl, DesktopInfo
 from .errors import (
     CDP_ERROR,
     INTERNAL_ERROR,
+    INTERRUPTED,
     INVALID_ARGUMENT,
     NOT_FOUND,
     NOT_READY_TIMEOUT,
@@ -227,6 +228,7 @@ def run_capture(
         previous_version: str | None = None
         changed: bool | None = None
         stopped: CaptureError | None = None
+        interrupted: BaseException | None = None
         try:
             info, driver = desktop.start()
             previous_version = previous_desktop_version(config.output_root, exclude=out)
@@ -272,6 +274,9 @@ def run_capture(
             stopped = exc
         except Exception as exc:  # a bug must still leave a manifest and a final job state behind
             stopped = CaptureError(INTERNAL_ERROR, f"{type(exc).__name__}: {exc}", {})
+        except BaseException as exc:  # SIGTERM/SIGHUP arrive as SystemExit, Ctrl-C as KeyboardInterrupt
+            stopped = CaptureError(INTERRUPTED, f"the batch was interrupted ({type(exc).__name__})", {})
+            interrupted = exc
         finally:
             desktop.stop()
         symbols = [
@@ -321,6 +326,8 @@ def run_capture(
         else:
             write_json_new(out / "capture-manifest.json", manifest)
         progress.update(state="failed" if stopped else "finished", current=None, error=error)
+        if interrupted is not None:
+            raise interrupted
         failures = [
             {"symbol": s["symbol"], "code": s["error"]["code"], "message": s["error"]["message"]}
             for s in symbols

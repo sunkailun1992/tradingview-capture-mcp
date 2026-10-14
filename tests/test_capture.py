@@ -148,6 +148,23 @@ def test_the_restored_chart_may_rename_its_symbol_while_it_loads(config):
     assert chart.symbol == "SSE_DLY:000001"
 
 
+def test_an_interrupted_batch_cleans_up_and_leaves_a_manifest(config):
+    chart = FakeChart(interrupt_on=SYMBOLS[1])
+    desktop = FakeDesktop(chart)
+    clock = FakeClock()
+    with pytest.raises(KeyboardInterrupt):
+        run_capture(
+            make_request(config), config, job_id="a" * 32, desktop=desktop, sleep=clock.sleep, clock=clock
+        )
+    out = config.output_root / "batch"
+    manifest = read_json(out / "capture-manifest.json")
+    assert (manifest["state"], manifest["error"]["code"]) == ("stopped", "INTERRUPTED")
+    assert manifest["totals"] == {"requested": 3, "succeeded": 1, "failed": 0, "pending": 2}
+    assert read_json(out / "job.json")["state"] == "failed"
+    assert desktop.stopped == 1
+    assert chart.symbol == "SSE_DLY:000001"
+
+
 def test_an_unknown_symbol_fails_alone(config):
     summary, _, _ = capture(config, make_request(config), FakeChart(unknown={SYMBOLS[1]}))
     assert [(f["symbol"], f["code"]) for f in summary["failures"]] == [(SYMBOLS[1], "SYMBOL_NOT_FOUND")]

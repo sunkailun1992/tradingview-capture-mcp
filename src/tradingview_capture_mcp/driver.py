@@ -38,6 +38,16 @@ class CdpDriver:
         return self._session.evaluate(page.build(script, args), timeout=timeout)
 
 
+# Desktops started by this process, so a termination signal can stop them from any thread.
+_ACTIVE: set[Any] = set()
+
+
+def stop_all_desktops() -> None:
+    for desktop_control in list(_ACTIVE):
+        with contextlib.suppress(Exception):
+            desktop_control.stop()
+
+
 class RealDesktop:
     """Starts the installed TradingView Desktop and connects to one layout's tab."""
 
@@ -50,6 +60,7 @@ class RealDesktop:
 
     def start(self) -> tuple[DesktopInfo, ChartDriver]:
         self._session = desktop.launch(self._config)
+        _ACTIVE.add(self)
         target = desktop.wait_for_chart_page(
             self._config.debug_port, self._layout, timeout=self._page_timeout
         )
@@ -66,6 +77,7 @@ class RealDesktop:
         if self._session is not None:
             desktop.stop_process(self._session.process)
             self._session = None
+        _ACTIVE.discard(self)
 
 
 def _wait_for_chart_api(driver: ChartDriver, timeout: float) -> None:
