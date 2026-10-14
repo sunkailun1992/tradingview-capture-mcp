@@ -21,7 +21,8 @@ function fixture(overrides = {}) {
   const assist = makeStudy({
     id: 'a1', name: 'Assist', zorder: -20000,
     plots: [{ id: 'plot_0', type: 'line' }, { id: 'plot_1', type: 'colorer' }, { id: 'plot_2', type: 'shapes' }, { id: 'plot_3', type: 'alertcondition' }],
-    styles: { plot_0: { title: 'Quarter' }, plot_2: { title: 'Shapes' } },
+    styles: { plot_0: { title: 'Quarter' }, plot_2: { title: 'Shapes', text: 'TD', size: 'tiny', isHidden: false } },
+    plotProps: { plot_2: { color: '#2962ff', plottype: 'shape_triangle_down', location: 'AboveBar' } },
     rows: [[1000, 10.5, 0, 1, 1], [2000, 11.25, 1, null, 0]],
     cells: [{ id: 1, tid: 0, row: 0, col: 0, t: 'Head' }, { id: 2, tid: 0, row: 1, col: 2, t: 'NaN' }],
     // x is a slot in indexes: slot 0 is a bar before the loaded range, slots 1 and 2 are bars 0 and 1.
@@ -51,6 +52,19 @@ function fixture(overrides = {}) {
     ...overrides,
   });
 }
+
+test('extract describes every exported plot with its CSV column and style', async () => {
+  const result = await run('extract', {}, fixture());
+  const [assist, band, delta] = result.studies;
+  assert.deepEqual(assist.plots, [
+    { id: 'plot_0', title: 'Quarter', type: 'line', csvColumn: 5, plotType: null, location: null, color: null, text: null, size: null, hidden: false },
+    { id: 'plot_2', title: 'Shapes', type: 'shapes', csvColumn: 6, plotType: 'shape_triangle_down', location: 'AboveBar', color: '#2962ff', text: 'TD', size: 'tiny', hidden: false },
+  ]);
+  assert.deepEqual(band.plots.map((p) => [p.title, p.csvColumn]), [['Upper, Inner', 7]]);
+  assert.deepEqual(delta.plots.map((p) => [p.title, p.csvColumn]), [['Body (Open)', 8], ['Body (High', 9]]);
+  const header = result.series.csv.split('\n')[0].split(',');
+  assert.equal(header[6], 'Shapes');
+});
 
 test('extract gives boxes the bar times of their edges', async () => {
   const zone = makeStudy({
