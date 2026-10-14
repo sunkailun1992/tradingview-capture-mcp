@@ -173,6 +173,26 @@ def test_an_interrupted_batch_cleans_up_and_leaves_a_manifest(config):
     assert chart.symbol == "SSE_DLY:000001"
 
 
+def test_a_restored_chart_that_never_settles_does_not_stop_the_batch(config):
+    chart = FakeChart(never_ready={"SSE_DLY:000001"})
+    summary, _, _ = capture(config, make_request(config), chart)
+    assert summary["totals"]["succeeded"] == 3, summary
+    startup = read_json(config.output_root / "batch" / "capture-manifest.json")["startup"]
+    assert startup == {
+        "symbol": "SSE_DLY:000001",
+        "resolution": "1D",
+        "settled": False,
+        "reason": "status:Alpha",
+    }
+    assert chart.symbol == "SSE_DLY:000001"
+
+
+def test_the_manifest_records_a_settled_start(config):
+    capture(config, make_request(config))
+    startup = read_json(config.output_root / "batch" / "capture-manifest.json")["startup"]
+    assert startup == {"symbol": "SSE_DLY:000001", "resolution": "1D", "settled": True, "reason": None}
+
+
 def test_an_unknown_symbol_fails_alone(config):
     summary, _, _ = capture(config, make_request(config), FakeChart(unknown={SYMBOLS[1]}))
     assert [(f["symbol"], f["code"]) for f in summary["failures"]] == [(SYMBOLS[1], "SYMBOL_NOT_FOUND")]

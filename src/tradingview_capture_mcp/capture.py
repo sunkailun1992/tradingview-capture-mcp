@@ -22,7 +22,6 @@ from .errors import (
     INTERRUPTED,
     INVALID_ARGUMENT,
     NOT_FOUND,
-    NOT_READY_TIMEOUT,
     OUTPUT_EXISTS,
     STUDY_MISSING,
     SYMBOL_NOT_FOUND,
@@ -228,6 +227,7 @@ def run_capture(
         changed: bool | None = None
         stopped: CaptureError | None = None
         interrupted: BaseException | None = None
+        startup: dict[str, Any] | None = None
         try:
             info, driver = desktop.start()
             previous_version = previous_desktop_version(config.output_root, exclude=out)
@@ -238,7 +238,7 @@ def run_capture(
                 raise CaptureError(
                     TV_INTERNALS_CHANGED, "TradingView's internals changed", {"failedChecks": issues}
                 )
-            original = _settle_current_chart(driver, request, sleep=sleep, clock=clock)
+            original = startup = _settle_current_chart(driver, request, sleep=sleep, clock=clock)
             try:
                 checked = False  # the self-check runs until one symbol has reached extraction
                 for code in todo:
@@ -309,6 +309,7 @@ def run_capture(
                 "previousVersion": previous_version,
             },
             "desktopVersionChanged": changed,
+            "startup": startup,
             "totals": totals,
             "symbols": symbols,
         }
@@ -400,13 +401,21 @@ def _settle_current_chart(
             elapsed=clock() - start,
         )
         if current.symbol and verdict.ready:
-            return {"symbol": current.symbol, "resolution": current.resolution}
+            return {
+                "symbol": current.symbol,
+                "resolution": current.resolution,
+                "settled": True,
+                "reason": None,
+            }
         if clock() - start >= request.ready_timeout_sec:
-            raise CaptureError(
-                NOT_READY_TIMEOUT,
-                "the restored chart did not finish loading",
-                {"reason": verdict.reason, "symbol": current.symbol},
-            )
+            # A study that never finishes on the restored symbol must not cost the whole batch; carry on
+            # from what the chart shows and let the manifest say so.
+            return {
+                "symbol": current.symbol,
+                "resolution": current.resolution,
+                "settled": False,
+                "reason": verdict.reason,
+            }
         previous = current
         sleep(1.0)
 
