@@ -1,10 +1,10 @@
 import copy
 
 import pytest
-from fakes import OK_DIAGNOSE
+from fakes import OK_DIAGNOSE, FakeChart, FakeClock
 
 from tradingview_capture_mcp.config import Config
-from tradingview_capture_mcp.diagnostics import problems, run_doctor
+from tradingview_capture_mcp.diagnostics import problems, run_doctor, wait_for_internals
 from tradingview_capture_mcp.errors import CaptureError
 
 
@@ -37,3 +37,23 @@ def test_doctor_checks_the_layout_before_starting_anything(tmp_path):
     with pytest.raises(CaptureError) as err:
         run_doctor(config, "../bad")
     assert err.value.code == "INVALID_ARGUMENT"
+
+
+def test_wait_for_internals_polls_until_the_page_is_built():
+    loading = copy.deepcopy(OK_DIAGNOSE)
+    loading["checks"][2] = {"name": "chartWidget", "ok": False, "error": "not built yet"}
+    clock = FakeClock()
+    found, report = wait_for_internals(
+        FakeChart(diagnose_sequence=[loading, loading]), timeout=30, sleep=clock.sleep, clock=clock
+    )
+    assert (found, report) == ([], OK_DIAGNOSE)
+    assert clock.now == 2
+
+
+def test_wait_for_internals_gives_up_with_the_last_problems():
+    broken = copy.deepcopy(OK_DIAGNOSE)
+    broken["checks"][2] = {"name": "chartWidget", "ok": False, "error": "gone"}
+    clock = FakeClock()
+    found, _ = wait_for_internals(FakeChart(diagnose=broken), timeout=5, sleep=clock.sleep, clock=clock)
+    assert found == ["chartWidget"]
+    assert clock.now >= 5

@@ -14,7 +14,7 @@ from typing import Any
 
 from . import TOOL_NAME, __version__
 from .config import Config
-from .diagnostics import problems
+from .diagnostics import wait_for_internals
 from .driver import ChartDriver, DesktopControl, DesktopInfo, Viewport
 from .errors import (
     CDP_ERROR,
@@ -244,7 +244,7 @@ def run_capture(
             previous_version = previous_desktop_version(config.output_root, exclude=out)
             changed = previous_version is not None and previous_version != info.version
             progress.update(desktopVersionChanged=changed)
-            issues = problems(driver.run("diagnose"))
+            issues, _ = wait_for_internals(driver, sleep=sleep, clock=clock)
             if issues:
                 raise CaptureError(
                     TV_INTERNALS_CHANGED, "TradingView's internals changed", {"failedChecks": issues}

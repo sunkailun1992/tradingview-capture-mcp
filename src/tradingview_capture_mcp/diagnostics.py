@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import time
+from collections.abc import Callable
 from typing import Any
 
 from .config import Config
-from .driver import RealDesktop
+from .driver import ChartDriver, RealDesktop
 from .store import BatchLock
 from .validation import check_layout
 
@@ -20,6 +22,7 @@ REQUIRED_CHECKS = (
     "shapes",
 )
 GRAPHICS_COLLECTIONS = 4
+INTERNALS_TIMEOUT = 30.0
 
 
 def problems(report: dict[str, Any]) -> list[str]:
@@ -48,17 +51,37 @@ def problems(report: dict[str, Any]) -> list[str]:
     return found
 
 
+def wait_for_internals(
+    driver: ChartDriver,
+    *,
+    timeout: float = INTERNALS_TIMEOUT,
+    sleep: Callable[[float], None] = time.sleep,
+    clock: Callable[[], float] = time.monotonic,
+) -> tuple[list[str], dict[str, Any]]:
+    """Poll the diagnose script until every check passes or the timeout ends.
+
+    Right after start the chart API answers before its internal model is built, so a single early
+    check would report a change that is only a page still loading."""
+    start = clock()
+    while True:
+        report = driver.run("diagnose")
+        found = problems(report)
+        if not found or clock() - start >= timeout:
+            return found, report
+        sleep(1.0)
+
+
 def run_doctor(config: Config, layout: str) -> dict[str, Any]:
     check_layout(layout)
     desktop = RealDesktop(config, layout)
     with BatchLock(config.output_root):
         try:
             info, driver = desktop.start()
-            report = driver.run("diagnose")
+            found, report = wait_for_internals(driver)
         finally:
             desktop.stop()
     return {
         "desktop": {"version": info.version, "browser": info.browser},
-        "problems": problems(report),
+        "problems": found,
         "report": report,
     }

@@ -90,6 +90,14 @@ def test_stops_before_any_symbol_when_the_internals_changed(config):
     assert read_json(out / "job.json")["state"] == "failed"
 
 
+def test_internals_that_appear_late_are_waited_for(config):
+    loading = json.loads(json.dumps(OK_DIAGNOSE))
+    loading["checks"][2] = {"name": "chartWidget", "ok": False, "error": "not built yet"}
+    summary, _, _ = capture(config, make_request(config), FakeChart(diagnose_sequence=[loading, loading]))
+    assert summary["state"] == "finished", summary
+    assert summary["totals"]["succeeded"] == 3
+
+
 def test_the_self_check_stops_the_batch_when_the_first_symbol_lacks_a_required_study(config):
     chart = FakeChart(missing_study=(SYMBOLS[0], "Alpha"))
     summary, _, _ = capture(config, make_request(config), chart)

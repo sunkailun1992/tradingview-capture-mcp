@@ -56,6 +56,7 @@ class FakeChart:
         loading_polls=0,
         ticking=False,
         revert_once=(),
+        diagnose_sequence=(),
     ):
         self.symbol = start_symbol
         self.previous = start_symbol
@@ -68,6 +69,7 @@ class FakeChart:
         self.missing_study = missing_study
         self.static_study = static_study
         self.diagnose_report = diagnose or OK_DIAGNOSE
+        self.diagnose_sequence = list(diagnose_sequence)  # reports returned first, e.g. while the page loads
         self.viewport = None
         self.calls = []
         self.start_symbol = start_symbol
@@ -88,6 +90,8 @@ class FakeChart:
         self.viewport = None
 
     def _diagnose(self, args):
+        if self.diagnose_sequence:
+            return self.diagnose_sequence.pop(0)
         return self.diagnose_report
 
     def _ready(self, args):
