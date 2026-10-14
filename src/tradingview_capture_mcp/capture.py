@@ -23,6 +23,7 @@ from .errors import (
     INVALID_ARGUMENT,
     NOT_FOUND,
     OUTPUT_EXISTS,
+    STUDY_HIDDEN,
     STUDY_MISSING,
     SYMBOL_NOT_FOUND,
     TV_INTERNALS_CHANGED,
@@ -215,6 +216,7 @@ def run_capture(
             attempt = _next_attempt(out, previous)
             started_at = previous.get("startedAt") or stamp()
         else:
+            _refuse_inside_a_batch(config.output_root, out)
             make_dir_new(out)
             ensure_dir(out / "raw")
             ensure_dir(out / "attempts")
@@ -270,7 +272,7 @@ def run_capture(
                         )
                         checked = True
                     except CaptureError as exc:
-                        if not checked and exc.code in (TV_INTERNALS_CHANGED, STUDY_MISSING):
+                        if not checked and exc.code in (TV_INTERNALS_CHANGED, STUDY_MISSING, STUDY_HIDDEN):
                             raise
                         result = {
                             "symbol": code,
@@ -358,6 +360,20 @@ def run_capture(
             "desktopVersionChanged": changed,
             "error": error,
         }
+
+
+def _refuse_inside_a_batch(root: Path, out: Path) -> None:
+    """A batch inside another one would be moved with it when the outer one is pruned."""
+    real_root = root.resolve()
+    for folder in out.parents:
+        if folder == real_root or real_root not in folder.parents:
+            break
+        if (folder / "batch.json").is_file():
+            raise CaptureError(
+                INVALID_ARGUMENT,
+                "output_dir must not be inside another batch; choose a folder next to it",
+                {"batch": str(folder)},
+            )
 
 
 def _record_success(
@@ -526,6 +542,13 @@ def capture_symbol(
     series = extracted.get("series") or {}
     names = [str(s.get("name") or "") for s in studies]
     missing = [want for want in request.required_studies if not any(want in name for name in names)]
+    # A study switched off with its eye icon still computes, so its data would come without its picture.
+    hidden = [
+        want
+        for want in request.required_studies
+        if want not in missing
+        and not any(want in str(s.get("name") or "") and s.get("visible") is not False for s in studies)
+    ]
     if self_check:
         failed = [
             name
@@ -557,6 +580,13 @@ def capture_symbol(
         )
     if missing:
         raise CaptureError(STUDY_MISSING, "required studies are missing", {"missing": missing})
+    if hidden:
+        raise CaptureError(
+            STUDY_HIDDEN,
+            "required studies are hidden on the layout, so the picture would lack them; ask the user to show "
+            "them again (the eye icon in the chart legend) and retry",
+            {"hidden": hidden},
+        )
     if size is None:
         raise CaptureError(CDP_ERROR, "the screenshot is not a PNG", {})
     if not series.get("rows"):

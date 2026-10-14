@@ -10,7 +10,7 @@ from typing import Any
 from mcp.server.mcpserver import Image, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 
-from . import __version__, diagnostics, jobs, results
+from . import __version__, diagnostics, jobs, prune, results
 from .capture import CaptureRequest
 from .config import load_config
 from .errors import CaptureError
@@ -30,7 +30,20 @@ INSTRUCTIONS = (
     "screen or not, capture_start fails at once with TV_ALREADY_RUNNING and creates nothing; ask the user "
     "to quit it with Cmd+Q, never kill it, then call it again (capture_retry continues a batch that "
     "stopped this way mid-run). Errors carry a stable code such as "
-    "TV_ALREADY_RUNNING or TV_INTERNALS_CHANGED."
+    "TV_ALREADY_RUNNING or TV_INTERNALS_CHANGED. "
+    "Besides the defaults, symbol_data can return plots (each exported plot with its CSV column and style, "
+    "its display bits, forceOverlay when it draws on the main chart although its study sits in another "
+    "pane, and lastValid, the last bar that has a value, which the price scale keeps showing after a line "
+    "stops), colors (per-bar colours of plots, fills, candles, bars and backgrounds as runs of [first bar "
+    "time, last bar time, colour]), fills, bands (horizontal levels) and notExported (what the tool could "
+    "not export; a non-empty list is a gap in the data, not proof that nothing is drawn; "
+    "unresolvedGraphicColors counts table, label and line colours it could not name, written as null). "
+    "A required study hidden on the layout fails with STUDY_HIDDEN; ask the user to show it again. "
+    "Keep only the current day's captures: when the day's captures are done, or before the first capture "
+    "of a new day, call output_prune to list the batches from before today, then call it again with "
+    "apply=true. It moves those batch folders to the macOS Trash and never deletes anything for good; never "
+    "empty the Trash yourself, tell the user the space comes back when they empty it. Files you made from a "
+    "capture outside its batch folder follow your own project's rules."
 )
 
 app = MCPServer(name="tradingview-capture", version=__version__, instructions=INSTRUCTIONS)
@@ -93,8 +106,8 @@ def batch_summary(output_dir: str) -> dict[str, Any]:
 
 @app.tool(
     description="Structured data for one symbol. parts: identity, tables, labels, lines, boxes, lastValues, "
-    "drawings, readiness, inputs (default identity, tables, lastValues, drawings). "
-    "series_last adds the last N CSV rows."
+    "drawings, readiness, inputs, plots, colors, fills, bands, notExported (default identity, tables, "
+    "lastValues, drawings). series_last adds the last N CSV rows."
 )
 @_coded
 def symbol_data(
@@ -116,6 +129,16 @@ def image_crop(output_dir: str, symbol: str, x: int, y: int, width: int, height:
 @_coded
 def diagnose(layout: str) -> dict[str, Any]:
     return diagnostics.run_doctor(load_config(), layout)
+
+
+@app.tool(
+    description="Keep the current day's capture batches and list the older ones under the output root; "
+    "with apply=true move those older batch folders to the macOS Trash. Never deletes anything for good. "
+    "keep_days counts today (1 keeps today only)."
+)
+@_coded
+def output_prune(keep_days: int = 1, apply: bool = False) -> dict[str, Any]:
+    return prune.prune(load_config(), keep_days=keep_days, apply=apply)
 
 
 def main() -> None:

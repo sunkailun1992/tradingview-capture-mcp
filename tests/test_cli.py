@@ -48,6 +48,12 @@ def test_crop_writes_a_private_file(root, capsys):
     assert code == 0 and payload["bytes"] > 0
 
 
+def test_prune_lists_without_moving_anything(root, capsys):
+    code, payload = run(capsys, "prune")
+    assert code == 0
+    assert (payload["apply"], payload["keepDays"], payload["batches"]) == (False, 1, [])
+
+
 @pytest.mark.parametrize(
     "argv",
     [

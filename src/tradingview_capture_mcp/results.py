@@ -13,7 +13,19 @@ from .images import crop_png
 from .store import read_json, resolve_inside_root, safe_name, write_new
 
 DEFAULT_PARTS = ("identity", "tables", "lastValues", "drawings")
-STUDY_PARTS = ("tables", "labels", "lines", "boxes", "lastValues", "inputs")
+STUDY_PARTS = (
+    "tables",
+    "labels",
+    "lines",
+    "boxes",
+    "lastValues",
+    "inputs",
+    "plots",
+    "colors",
+    "fills",
+    "bands",
+    "notExported",
+)
 ALL_PARTS = ("identity", "drawings", "readiness", *STUDY_PARTS)
 MAX_SERIES_ROWS = 1000
 
@@ -69,7 +81,14 @@ def symbol_data(
     study_parts = [p for p in STUDY_PARTS if p in wanted]
     if study_parts:
         result["studies"] = [
-            {"name": s.get("name"), "id": s.get("id"), **{p: s.get(p) for p in study_parts}}
+            {
+                "name": s.get("name"),
+                "id": s.get("id"),
+                "pane": s.get("pane"),
+                "visible": s.get("visible"),
+                "unresolvedGraphicColors": s.get("unresolvedGraphicColors"),
+                **{p: s.get(p) for p in study_parts},
+            }
             for s in data.get("studies", [])
         ]
     if series_last:

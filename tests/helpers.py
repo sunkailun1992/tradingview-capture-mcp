@@ -41,12 +41,27 @@ def make_batch(out: Path, symbol: str, *, csv_text: str = DEFAULT_CSV, png: byte
             {
                 "id": "s1",
                 "name": "Alpha",
+                "pane": 0,
+                "visible": True,
+                "unresolvedGraphicColors": 0,
                 "tables": [{"id": "0", "rows": [["Head", None]]}],
                 "labels": [{"text": "9.5", "time": 2000}],
                 "lines": [],
                 "boxes": [],
                 "lastValues": [["Quarter", 11.25]],
                 "inputs": {"length": 14},
+                "plots": [{"id": "plot_0", "title": "Quarter", "lastValid": {"time": 2000, "value": 11.25}}],
+                "colors": [
+                    {
+                        "id": "plot_1",
+                        "kind": "colorer",
+                        "target": "plot_0",
+                        "runs": [[1000, 2000, "rgba(255,0,0,1)"]],
+                    }
+                ],
+                "fills": [{"id": "fill_0", "between": ["hline_0", "hline_1"]}],
+                "bands": [{"id": "hline_0", "value": 90}],
+                "notExported": {"plots": [], "graphics": []},
             }
         ],
         "drawings": [],

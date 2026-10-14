@@ -59,6 +59,9 @@ def problems(report: dict[str, Any]) -> list[str]:
         # Without the index table labels, lines and boxes cannot be placed on their bars.
         if any(study.get("indexes") is not True for study in studies):
             found.append("studies.indexes")
+        # Plot styles and the visibility flag exist on every study; without them nothing says what is shown.
+        if any(not {"styles", "visible"} <= set(study.get("properties") or []) for study in studies):
+            found.append("studies.properties")
     if "shapes" not in found:
         shapes = checks["shapes"].get("detail") or []
         if any(not isinstance(shape, dict) or shape.get("points") != "function" for shape in shapes):

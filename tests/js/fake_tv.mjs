@@ -20,31 +20,43 @@ function primitiveCollection(key, items, nested) {
 
 // Labels, lines and boxes store x as a slot in _graphics._indexes, which holds the bar index; -2000000 marks a bar
 // outside the loaded range (probed on TradingView Desktop 3.4.1, 2026-10-14).
-// Live plot properties (colour, plot type, location) sit in properties().childs().styles.childs()[plotId].
-function plotProperties(plotProps) {
+// Study properties as TradingView Desktop 3.4.1 holds them (probed 2026-10-14): live plot styles (colour, plot type,
+// location, display) sit in properties().childs().styles.childs()[plotId]; palettes, filledAreasStyle and bands are
+// whole nodes read with state(); flags such as visible are read with value().
+function studyProperties(plotProps, props) {
   const node = (value) => ({ value: () => value });
   const styles = Object.fromEntries(Object.entries(plotProps).map(([plotId, fields]) => [plotId, {
     childs: () => Object.fromEntries(Object.entries(fields).map(([key, value]) => [key, node(value)])),
   }]));
-  return { childs: () => ({ styles: { childs: () => styles } }) };
+  const childs = { styles: { childs: () => styles } };
+  for (const [key, value] of Object.entries(props)) {
+    childs[key] = typeof value === 'boolean' ? node(value) : { state: () => value };
+  }
+  return { childs: () => childs };
 }
 
-export function makeStudy({ id, name, zorder, plots, rows, styles = {}, ohlcPlots, cells = [], labels = [], lines = [], boxes = [], status = 2, indexes = [], plotProps = {} }) {
+export function makeStudy({ id, name, zorder, plots, rows, styles = {}, ohlcPlots, cells = [], labels = [], lines = [], boxes = [], status = 2, indexes = [], plotProps = {}, meta = {}, props = {}, tables = [], graphics = {} }) {
   return {
     id: () => id,
     zorder: () => zorder,
     status: () => ({ type: status }),
-    metaInfo: () => ({ description: name, plots, styles, ohlcPlots }),
+    metaInfo: () => ({ description: name, plots, styles, ohlcPlots, ...meta }),
     data: () => plotList(rows),
     inputs: () => ({ length: 14 }),
-    properties: () => plotProperties(plotProps),
+    properties: () => studyProperties(plotProps, { visible: true, showLabelsOnPriceScale: true, ...props }),
     _graphics: {
       _indexes: indexes,
       _primitivesCollection: {
         dwgtablecells: primitiveCollection('tableCells', cells, false),
+        dwgtables: primitiveCollection('tables', tables, false),
         dwglabels: primitiveCollection('labels', labels, true),
         dwglines: primitiveCollection('lines', lines, true),
         dwgboxes: primitiveCollection('boxes', boxes, true),
+        // Every live study has this one; it holds script statistics, not drawings.
+        performance: new Map([['performance', {}]]),
+        // Kinds the export does not read (polylines, linefills, ...) are empty maps on the live chart.
+        dwgpolylines: new Map(),
+        ...graphics,
       },
     },
   };

@@ -116,6 +116,19 @@ def test_the_self_check_moves_to_the_next_symbol_when_the_first_never_reaches_ex
     assert (summary["error"]["code"], summary["error"]["detail"]["missing"]) == ("STUDY_MISSING", ["Alpha"])
 
 
+def test_the_batch_stops_when_a_required_study_is_hidden_on_the_layout(config):
+    summary, chart, _ = capture(config, make_request(config), FakeChart(hidden_studies=("Alpha",)))
+    assert summary["state"] == "stopped"
+    assert (summary["error"]["code"], summary["error"]["detail"]["hidden"]) == ("STUDY_HIDDEN", ["Alpha"])
+    assert summary["totals"]["succeeded"] == 0
+    assert chart.symbol == "SSE_DLY:000001"
+
+
+def test_a_hidden_study_nobody_asked_for_does_not_matter(config):
+    summary, _, _ = capture(config, make_request(config), FakeChart(hidden_studies=("Beta",)))
+    assert summary["state"] == "finished"
+
+
 def test_later_failures_are_recorded_and_the_batch_goes_on(config):
     chart = FakeChart(missing_study=(SYMBOLS[1], "Alpha"), never_ready={SYMBOLS[2]})
     summary, _, _ = capture(config, make_request(config), chart)
@@ -287,6 +300,15 @@ def test_retry_with_nothing_left_to_do(config):
     with pytest.raises(CaptureError) as err:
         capture(config, make_request(config, retry_failed=True))
     assert err.value.code == "NOT_FOUND"
+
+
+def test_refuses_a_new_batch_inside_another_batch(config):
+    capture(config, make_request(config))
+    inner = make_request(config, output_dir=str(config.output_root / "batch" / "inner"))
+    with pytest.raises(CaptureError) as err:
+        capture(config, inner)
+    assert err.value.code == "INVALID_ARGUMENT"
+    assert not (config.output_root / "batch" / "inner").exists()
 
 
 def test_refuses_an_existing_output_dir_and_a_held_lock(config):
