@@ -20,27 +20,38 @@ async function run(name, args, window, globals = {}) {
 function fixture(overrides = {}) {
   const assist = makeStudy({
     id: 'a1', name: 'Assist', zorder: -20000,
-    plots: [{ id: 'plot_0', type: 'line' }, { id: 'plot_1', type: 'colorer' }, { id: 'plot_2', type: 'shapes' }, { id: 'plot_3', type: 'alertcondition' }],
+    plots: [{ id: 'plot_0', type: 'line' }, { id: 'plot_1', type: 'colorer', target: 'plot_0' }, { id: 'plot_2', type: 'shapes' }, { id: 'plot_3', type: 'alertcondition' }],
     styles: { plot_0: { title: 'Quarter' }, plot_2: { title: 'Shapes', text: 'TD', size: 'tiny', isHidden: false } },
-    plotProps: { plot_2: { color: '#2962ff', plottype: 'shape_triangle_down', location: 'AboveBar' } },
-    rows: [[1000, 10.5, 0, 1, 1], [2000, 11.25, 1, null, 0]],
-    cells: [{ id: 1, tid: 0, row: 0, col: 0, t: 'Head' }, { id: 2, tid: 0, row: 1, col: 2, t: 'NaN' }],
+    plotProps: { plot_2: { color: '#2962ff', plottype: 'shape_triangle_down', location: 'AboveBar', display: 15 } },
+    // An RGB script: colours are ARGB numbers with the alpha in the top byte (0xFFFF0000 is opaque red). The live
+    // chart keeps the ids of force_overlay plots in a Set.
+    meta: { isRGB: true, _forceOverlayPlotIds: new Set(['plot_2']) },
+    rows: [[1000, 10.5, 0xFFFF0000, 1, 1], [2000, 11.25, 0xFFFF0000, null, 0]],
+    tables: [{ id: 0, pos: 'top_right', rows: 2, cols: 3 }],
+    cells: [
+      { id: 1, tid: 0, row: 0, col: 0, t: 'Head', tc: 0xFFFFFFFF, bgc: 0 },
+      { id: 2, tid: 0, row: 1, col: 2, t: 'NaN', tc: 0xFF000000, bgc: 0x80FF0000 },
+    ],
     // x is a slot in indexes: slot 0 is a bar before the loaded range, slots 1 and 2 are bars 0 and 1.
     indexes: [-2000000, 0, 1],
     labels: [
-      { id: 7, x: 2, y: 2.5, t: '9.5', st: 'lup', ci: null, tci: 4278226175, sz: 'small', tt: '' },
-      { id: 8, x: 0, y: 1.5, t: '7', st: 'ldn', ci: null, tci: null, sz: 'small', tt: '' },
+      { id: 7, x: 2, y: 2.5, yl: 'ab', t: '9.5', st: 'lup', ci: null, tci: 4278226175, sz: 'small', ta: 'center', tt: '' },
+      { id: 8, x: 0, y: 1.5, yl: 'pr', t: '7', st: 'ldn', ci: null, tci: null, sz: 'small', ta: 'center', tt: '' },
     ],
     lines: [{ id: 9, x1: 1, y1: 1, x2: 2, y2: 2, ex: 'n', st: 0, ci: 255, w: 1 }],
   });
   const band = makeStudy({
     id: 'b1', name: 'Band', zorder: -10000, plots: [{ id: 'plot_0', type: 'line' }],
-    styles: { plot_0: { title: 'Upper, Inner' } }, rows: [[1000, Number.NaN], [2000, 3]],
+    styles: { plot_0: { title: 'Upper, Inner' } }, rows: [[1000, Number.NaN], [2000, 3]], props: { visible: false },
   });
   const delta = makeStudy({
     id: 'c1', name: 'Delta', zorder: -10000,
     plots: [{ id: 'plot_0', type: 'ohlc_open', target: 'plotcandle_0' }, { id: 'plot_1', type: 'ohlc_high', target: 'plotcandle_0' }, { id: 'plot_2', type: 'data' }],
-    ohlcPlots: { plotcandle_0: { title: 'Body' } }, rows: [[1000, 5, 6, 7], [2000, 8, 9, 10]],
+    ohlcPlots: { plotcandle_0: { title: 'Body', forceOverlay: true } }, rows: [[1000, 5, 6, 7], [2000, 8, 9, 10]],
+    // Candles drawn on the main chart from another pane, with values shown in volume format (83.42K).
+    meta: { isRGB: true, _forceOverlayPlotIds: new Set(['plotcandle_0', 'plot_0', 'plot_1']), format: { type: 'volume' } },
+    // A kind of drawing the export does not read yet: it must be reported, never dropped silently.
+    graphics: { dwgpolylines: new Map([['polylines', new Map([[false, { _primitivesDataById: new Map([[1, { id: 1 }]]) }]])]]) },
   });
   return makeTradingView({
     bars: plotList([[1000, 1, 2, 0.5, 1.5], [2000, 1.5, 2.5, 1, 2]]),
@@ -57,13 +68,64 @@ test('extract describes every exported plot with its CSV column and style', asyn
   const result = await run('extract', {}, fixture());
   const [assist, band, delta] = result.studies;
   assert.deepEqual(assist.plots, [
-    { id: 'plot_0', title: 'Quarter', type: 'line', csvColumn: 5, plotType: null, location: null, color: null, text: null, size: null, hidden: false },
-    { id: 'plot_2', title: 'Shapes', type: 'shapes', csvColumn: 6, plotType: 'shape_triangle_down', location: 'AboveBar', color: '#2962ff', text: 'TD', size: 'tiny', hidden: false },
+    { id: 'plot_0', title: 'Quarter', type: 'line', csvColumn: 5, plotType: null, location: null, color: null, text: null, size: null, hidden: false, display: null, forceOverlay: false, lastValid: { time: 2000, value: 11.25 } },
+    { id: 'plot_2', title: 'Shapes', type: 'shapes', csvColumn: 6, plotType: 'shape_triangle_down', location: 'AboveBar', color: '#2962ff', text: 'TD', size: 'tiny', hidden: false, display: 15, forceOverlay: true, lastValid: { time: 1000, value: 1 } },
   ]);
+  // The last bar has no value here, so the last valid one is a bar earlier.
+  assert.deepEqual(band.plots[0].lastValid, { time: 2000, value: 3 });
   assert.deepEqual(band.plots.map((p) => [p.title, p.csvColumn]), [['Upper, Inner', 7]]);
-  assert.deepEqual(delta.plots.map((p) => [p.title, p.csvColumn]), [['Body (Open)', 8], ['Body (High', 9]]);
+  assert.deepEqual(delta.plots.map((p) => [p.title, p.csvColumn, p.forceOverlay]), [['Body (Open)', 8, true], ['Body (High', 9, true]]);
+  assert.deepEqual([assist.format, delta.format], [null, { type: 'volume' }]);
   const header = result.series.csv.split('\n')[0].split(',');
   assert.equal(header[6], 'Shapes');
+});
+
+test('extract turns the per-bar colours of an RGB script into runs', async () => {
+  const result = await run('extract', {}, fixture());
+  const [assist, band] = result.studies;
+  assert.deepEqual(assist.colors, [{ id: 'plot_1', kind: 'colorer', target: 'plot_0', runs: [[1000, 2000, 'rgba(255,0,0,1)']], unresolved: 0 }]);
+  assert.deepEqual(band.colors, []);
+});
+
+test('extract resolves palette colours and exports fills and bands', async () => {
+  const osc = makeStudy({
+    id: 'o1', name: 'Osc', zorder: -10000,
+    plots: [{ id: 'plot_0', type: 'line' }, { id: 'plot_1', type: 'colorer', target: 'fill_0', palette: 'palette_0' }, { id: 'plot_2', type: 'bg_colorer', palette: 'palette_0' }],
+    styles: { plot_0: { title: 'Wave' } },
+    rows: [[1000, 50, 5, 113], [2000, 60, 7, Number.NaN]],
+    // A script without RGB colours stores a value that the palette's table turns into one of its colour slots.
+    meta: {
+      palettes: { palette_0: { colors: { 0: { name: 'Color 0' }, 1: { name: 'Color 1' } }, valToIndex: { 5: 0, 113: 1 } } },
+      filledAreas: [{ id: 'fill_0', objAId: 'hline_0', objBId: 'hline_1', type: 'hline_hline', title: 'Zone', palette: 'palette_0' }],
+      bands: [{ id: 'hline_0', name: 'Upper' }, { id: 'hline_1', name: 'Level' }],
+    },
+    props: {
+      palettes: { palette_0: { colors: { 0: { color: 'rgba(62,191,255,0.41)', style: 0, width: 1 }, 1: { color: 'rgba(0,0,0,0)', style: 0, width: 1 } } } },
+      filledAreasStyle: { fill_0: { color: '#2962ff', transparency: 0, visible: true } },
+      bands: [
+        { color: '#DBDBDB', linestyle: 2, linewidth: 1, value: 90, visible: true },
+        { color: 'rgba(54,58,69,0.01)', linestyle: 2, linewidth: 1, value: 70, visible: false },
+      ],
+    },
+  });
+  const [study] = (await run('extract', {}, fixture({ panes: [[osc]], shapes: [] }))).studies;
+  assert.deepEqual(study.fills, [{ id: 'fill_0', title: 'Zone', type: 'hline_hline', between: ['hline_0', 'hline_1'], visible: true, fillType: null, color: '#2962ff', transparency: 0 }]);
+  assert.deepEqual(study.bands, [
+    { id: 'hline_0', name: 'Upper', value: 90, color: '#DBDBDB', visible: true, lineStyle: 2, lineWidth: 1 },
+    { id: 'hline_1', name: 'Level', value: 70, color: 'rgba(54,58,69,0.01)', visible: false, lineStyle: 2, lineWidth: 1 },
+  ]);
+  // 7 is not in the palette's table: the colour is unknown, and the export counts it instead of guessing.
+  assert.deepEqual(study.colors, [
+    { id: 'plot_1', kind: 'colorer', target: 'fill_0', runs: [[1000, 1000, 'rgba(62,191,255,0.41)'], [2000, 2000, null]], unresolved: 1 },
+    { id: 'plot_2', kind: 'bg_colorer', target: null, runs: [[1000, 1000, 'rgba(0,0,0,0)'], [2000, 2000, null]], unresolved: 0 },
+  ]);
+});
+
+test('extract says whether each study is shown and what it could not export', async () => {
+  const [assist, band, delta] = (await run('extract', {}, fixture())).studies;
+  assert.deepEqual([assist.visible, assist.showLabelsOnPriceScale, band.visible], [true, true, false]);
+  assert.deepEqual(assist.notExported, { plots: [], graphics: [] });
+  assert.deepEqual(delta.notExported, { plots: [{ id: 'plot_2', type: 'data', target: null }], graphics: ['dwgpolylines'] });
 });
 
 test('extract gives boxes the bar times of their edges', async () => {
@@ -90,13 +152,19 @@ test('extract orders studies by pane then z-order and writes export-shaped CSV',
 test('extract returns tables, labels, lines, last values, drawings and identity', async () => {
   const result = await run('extract', {}, fixture());
   const [assist] = result.studies;
-  assert.deepEqual(assist.tables, [{ id: '0', rows: [['Head'], [null, null, 'NaN']] }]);
+  assert.deepEqual(assist.tables, [{
+    id: '0', position: 'top_right', rows: [['Head'], [null, null, 'NaN']],
+    cellColors: [
+      [{ text: 'rgba(255,255,255,1)', background: 'rgba(0,0,0,0)' }],
+      [null, null, { text: 'rgba(0,0,0,1)', background: 'rgba(255,0,0,0.5)' }],
+    ],
+  }]);
   // Bar times come through the graphics index table; a label on a bar outside the loaded range has none.
   assert.deepEqual(assist.labels, [
-    { id: 7, index: 1, time: 2000, price: 2.5, text: '9.5', style: 'lup', color: null, textColor: 4278226175, size: 'small', tooltip: null },
-    { id: 8, index: null, time: null, price: 1.5, text: '7', style: 'ldn', color: null, textColor: null, size: 'small', tooltip: null },
+    { id: 7, index: 1, time: 2000, price: 2.5, text: '9.5', style: 'lup', color: null, textColor: 4278226175, size: 'small', tooltip: null, yloc: 'ab', textAlign: 'center', colorCss: null, textColorCss: 'rgba(0,140,255,1)' },
+    { id: 8, index: null, time: null, price: 1.5, text: '7', style: 'ldn', color: null, textColor: null, size: 'small', tooltip: null, yloc: 'pr', textAlign: 'center', colorCss: null, textColorCss: null },
   ]);
-  assert.deepEqual(assist.lines, [{ id: 9, index1: 0, time1: 1000, price1: 1, index2: 1, time2: 2000, price2: 2, extend: 'n', style: 0, color: 255, width: 1 }]);
+  assert.deepEqual(assist.lines, [{ id: 9, index1: 0, time1: 1000, price1: 1, index2: 1, time2: 2000, price2: 2, extend: 'n', style: 0, color: 255, width: 1, colorCss: 'rgba(0,0,255,0)' }]);
   assert.deepEqual(assist.lastValues, [['Quarter', 11.25], ['Shapes', null]]);
   assert.deepEqual(result.drawings, [{
     id: 's1', type: 'fib_retracement',
@@ -157,6 +225,7 @@ test('alive and diagnose never throw', async () => {
   // No boxes: the live chart then holds an empty map where the boxes would be, which means none, not broken.
   assert.deepEqual(assist.primitives, { dwgtablecells: 2, dwglabels: 2, dwglines: 1, dwgboxes: null });
   assert.equal(assist.indexes, true);
+  assert.deepEqual(assist.properties, ['styles', 'visible']);
   assert.deepEqual(report.checks.find((c) => c.name === 'studyCount').detail, { public: 3, matched: 3 });
   assert.deepEqual(report.checks.find((c) => c.name === 'shapes').detail, [{ name: 'fib_retracement', points: 'function' }]);
 });

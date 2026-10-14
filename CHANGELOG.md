@@ -2,7 +2,27 @@
 
 本文件记录每个版本的变化，以及验证过的 TradingView 桌面版版本。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号用[语义化版本](https://semver.org/lang/zh-CN/)。
 
-## 0.1.0 — 未发布
+## 0.2.0 — 2026-10-14
+
+只新增字段，原有字段和 `chart.csv` 的列都不变。
+
+### 新增
+
+- 逐根 K 的颜色：每个着色器（曲线、填色、K 线组、整根 K 线、背景、文字）的颜色压成 `[起始 K 时间, 结束 K 时间, 颜色]` 连续段，写在指标的 `colors` 里。RGB 脚本的颜色是 ARGB 数字（透明度在最高字节），其他脚本的颜色是调色板下标，两种都换成 CSS 颜色；查不到的计入 `unresolved`。
+- 指标的 `fills`（两条曲线或两条水平线之间的填色）、`bands`（水平线的名字、数值、颜色、是否显示）、`visible`、`showLabelsOnPriceScale` 和 `format`。
+- 曲线的 `display`、`forceOverlay`（Pine v6 `force_overlay`：指标在别的窗格，这条却画在主图上；活体图表把这些 id 存在 Set 里，K 线组的各列也在其中）和 `lastValid`（最后一根有值的 K；价格轴上一直显示的就是它）。
+- 表格的 `position` 与 `cellColors`；标签的 `yloc`、`textAlign`、`colorCss`、`textColorCss`；线的 `colorCss`。
+- `notExported`：工具没能导出的曲线类型（例如渐变填色的上下沿）和图元种类，不为空就是数据有缺口。
+- `STUDY_HIDDEN`：要求的指标在布局里被隐藏时，第一个品种就整批停下。
+- `output_prune` / `prune`：列出 `output_root` 下今天以前的批次，`apply` 时用 `/usr/bin/trash` 移到废纸篓；从不永久删除，采集进行中不动。MCP 说明里写明只保留当天的批次。
+- `symbol_data` 可以取 `plots`、`colors`、`fills`、`bands`、`notExported`，每个指标都带 `pane` 和 `visible`。
+- `diagnose` 报告每个指标的属性节点，缺少样式或显示开关时报 `studies.properties`。
+
+### 已核对
+
+- TradingView 桌面版 3.4.1：3 个品种活体采集全部成功；颜色全部解析（`unresolved` 为 0）；按 `lastValid`、`display`、`forceOverlay` 推出的主图价格轴标签与截图逐个一致（24 个）。
+
+## 0.1.0 — 2026-10-14
 
 ### 新增
 

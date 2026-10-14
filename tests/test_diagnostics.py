@@ -35,6 +35,7 @@ def check(report, name):
             lambda r: check(r, "studies")["detail"][0]["primitives"].update(dwglabels="broken"),
             "studies.primitives",
         ),
+        (lambda r: check(r, "studies")["detail"][0].update(properties=["styles"]), "studies.properties"),
         (lambda r: check(r, "studyCount")["detail"].update(matched=0), "studies.unmatched"),
         (lambda r: check(r, "shapes")["detail"][0].update(points="undefined"), "shapes.points"),
         (lambda r: r["checks"].remove(check(r, "shapes")), "shapes"),

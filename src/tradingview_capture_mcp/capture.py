@@ -23,6 +23,7 @@ from .errors import (
     INVALID_ARGUMENT,
     NOT_FOUND,
     OUTPUT_EXISTS,
+    STUDY_HIDDEN,
     STUDY_MISSING,
     SYMBOL_NOT_FOUND,
     TV_INTERNALS_CHANGED,
@@ -270,7 +271,7 @@ def run_capture(
                         )
                         checked = True
                     except CaptureError as exc:
-                        if not checked and exc.code in (TV_INTERNALS_CHANGED, STUDY_MISSING):
+                        if not checked and exc.code in (TV_INTERNALS_CHANGED, STUDY_MISSING, STUDY_HIDDEN):
                             raise
                         result = {
                             "symbol": code,
@@ -526,6 +527,13 @@ def capture_symbol(
     series = extracted.get("series") or {}
     names = [str(s.get("name") or "") for s in studies]
     missing = [want for want in request.required_studies if not any(want in name for name in names)]
+    # A study switched off with its eye icon still computes, so its data would come without its picture.
+    hidden = [
+        want
+        for want in request.required_studies
+        if want not in missing
+        and not any(want in str(s.get("name") or "") and s.get("visible") is not False for s in studies)
+    ]
     if self_check:
         failed = [
             name
@@ -557,6 +565,13 @@ def capture_symbol(
         )
     if missing:
         raise CaptureError(STUDY_MISSING, "required studies are missing", {"missing": missing})
+    if hidden:
+        raise CaptureError(
+            STUDY_HIDDEN,
+            "required studies are hidden on the layout, so the picture would lack them; ask the user to show "
+            "them again (the eye icon in the chart legend) and retry",
+            {"hidden": hidden},
+        )
     if size is None:
         raise CaptureError(CDP_ERROR, "the screenshot is not a PNG", {})
     if not series.get("rows"):

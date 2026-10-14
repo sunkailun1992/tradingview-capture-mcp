@@ -33,6 +33,7 @@ OK_DIAGNOSE = {
                     "collections": ["dwgtablecells", "dwglabels", "dwglines", "dwgboxes"],
                     "primitives": {"dwgtablecells": 3, "dwglabels": 0, "dwglines": None, "dwgboxes": None},
                     "indexes": True,
+                    "properties": ["styles", "visible", "palettes", "filledAreasStyle", "bands"],
                 }
             ],
         },
@@ -63,6 +64,7 @@ class FakeChart:
         resolves=None,
         interrupt_on=None,
         start_alias=None,
+        hidden_studies=(),
     ):
         self.symbol = start_symbol
         self.previous = start_symbol
@@ -87,6 +89,7 @@ class FakeChart:
         self.resolves = dict(resolves or {})  # requested code -> the name TradingView serves it under
         # (alias, reads): the restored chart first shows `alias` without bars, then resolves to start_symbol
         self.start_alias = list(start_alias) if start_alias else None
+        self.hidden_studies = set(hidden_studies)  # studies whose eye icon is off on the layout
 
     def run(self, script, args=None, *, timeout=60.0):
         self.calls.append((script, dict(args or {})))
@@ -171,6 +174,7 @@ class FakeChart:
                 {
                     "id": f"s{i}",
                     "name": name,
+                    "visible": name not in self.hidden_studies,
                     "tables": [{"id": "0", "rows": [[name, self.symbol]]}],
                     "labels": [],
                     "lines": [],

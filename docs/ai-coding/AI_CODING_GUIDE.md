@@ -26,6 +26,7 @@ page.py + page/*.js           固定页面脚本：alive、ready、switch、extr
         │
 store.py / config.py / errors.py / validation.py   写文件、配置、错误码、输入格式
 results.py                    读批次、读品种数据、裁图
+prune.py                      只保留当天的批次：列出更早的批次，或移到废纸篓
 ```
 
 ## 数据流

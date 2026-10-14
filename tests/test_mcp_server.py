@@ -22,7 +22,7 @@ def call(name, arguments):
     return asyncio.run(app.call_tool(name, arguments))
 
 
-def test_the_seven_tools_are_listed():
+def test_the_eight_tools_are_listed():
     tools = asyncio.run(app.list_tools())
     assert {tool.name for tool in tools} == {
         "capture_start",
@@ -32,7 +32,25 @@ def test_the_seven_tools_are_listed():
         "symbol_data",
         "image_crop",
         "diagnose",
+        "output_prune",
     }
+
+
+def test_output_prune_is_a_dry_run_unless_asked(root):
+    payload = json.loads(call("output_prune", {}).content[0].text)
+    assert (payload["apply"], payload["batches"]) == (False, [])
+
+
+def test_instructions_tell_the_agent_to_keep_only_the_current_day():
+    text = app.instructions
+    for hint in ("output_prune", "today", "Trash", "never deletes"):
+        assert hint in text
+
+
+def test_instructions_name_the_drawing_parts_and_a_hidden_study():
+    text = app.instructions
+    for hint in ("colors", "fills", "bands", "notExported", "forceOverlay", "lastValid", "STUDY_HIDDEN"):
+        assert hint in text
 
 
 def test_batch_summary_and_symbol_data(root):

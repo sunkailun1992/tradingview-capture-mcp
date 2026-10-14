@@ -1,4 +1,4 @@
-"""Command line: capture, status, read, crop, doctor, and the stdio MCP server."""
+"""Command line: capture, status, read, crop, prune, doctor, and the stdio MCP server."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from . import diagnostics, jobs, results
+from . import diagnostics, jobs, prune, results
 from .capture import CaptureRequest, run_capture
 from .config import load_config
 from .driver import RealDesktop
@@ -60,6 +60,11 @@ def build_parser() -> argparse.ArgumentParser:
     crop.add_argument("--symbol", required=True)
     crop.add_argument("--box", required=True, help="x,y,width,height")
     crop.add_argument("--out", required=True)
+    clean = sub.add_parser(
+        "prune", help="list batches from before today; with --apply move them to the Trash (never deletes)"
+    )
+    clean.add_argument("--keep-days", type=int, default=1, help="days to keep, today included (default 1)")
+    clean.add_argument("--apply", action="store_true", help="move the listed batches to the Trash")
     doctor = sub.add_parser("doctor", help="check the TradingView Desktop internals a capture needs")
     doctor.add_argument("--layout", required=True)
     sub.add_parser("mcp", help="run the MCP server on stdio")
@@ -110,6 +115,9 @@ def _dispatch(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         ), 0
     if args.command == "crop":
         return results.save_crop(config, args.output_dir, args.symbol, _box(args.box), args.out), 0
+    if args.command == "prune":
+        report = prune.prune(config, keep_days=args.keep_days, apply=args.apply)
+        return report, 1 if report["totals"]["failed"] else 0
     if args.command == "doctor":
         report = diagnostics.run_doctor(config, args.layout)
         return report, 0 if not report["problems"] else 1

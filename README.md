@@ -10,9 +10,10 @@
 
 ## English summary
 
-- **What it does:** starts TradingView Desktop with a loopback-only DevTools port, switches one layout through the TradingView codes you pass in, and writes per symbol: the chart as TradingView renders it (`image.png`), a CSV with the same columns as TradingView's own "Export chart data" (`chart.csv`), and the indicators' tables, labels, lines, boxes and drawings (`data.json`).
+- **What it does:** starts TradingView Desktop with a loopback-only DevTools port, switches one layout through the TradingView codes you pass in, and writes per symbol: the chart as TradingView renders it (`image.png`), a CSV with the same columns as TradingView's own "Export chart data" (`chart.csv`), and the indicators' tables, labels, lines, boxes and drawings (`data.json`), including per-bar colours, fills, horizontal levels, which plots draw on the main chart from another pane, and each plot's last valid value (what the price scale keeps showing after a line stops).
 - **What it does not do:** choose symbols, analyse anything, or upload anything. The caller decides what to capture and how to check and use the data.
 - **Requirements:** macOS, a logged-in TradingView Desktop that is fully quit before a capture (Cmd+Q; full screen or not makes no difference, the tool starts it with its own debugging port), Python 3.12+ and uv.
+- **Keep only today:** `output_prune` (CLI `prune`) lists the batches from before today and, with `apply`, moves them to the macOS Trash; it never deletes anything for good.
 - **Use it:** install with `uv tool install git+https://github.com/sunkailun1992/tradingview-capture-mcp`, register `~/.local/bin/tradingview-capture mcp` (absolute path) as a stdio MCP server, call `capture_start`, poll `capture_status`, then read with `batch_summary`, `symbol_data` and `image_crop`. Update with `uv tool upgrade tradingview-capture-mcp`.
 
 ## 它做什么
@@ -20,10 +21,12 @@
 - 按调用方给出的 TradingView 代码清单逐个切换图表，每个品种导出四个文件：
   - `image.png`：TradingView 自己渲染的图表；
   - `chart.csv`：列名、列序和数字写法与 TradingView 的"下载图表数据"一致；
-  - `data.json`：指标画出的表格（逐格原文）、标签、线、框、绘图端点与档位，以及每条曲线的最后值；
+  - `data.json`：指标画出的表格（逐格原文与颜色）、标签、线、框、绘图端点与档位，每条曲线的样式、最后值和最后一个有效值，逐根 K 的颜色（曲线、填色、K 线、背景），填色带与水平线，以及工具没能导出的部分（`notExported`）；
   - `capture.json`：各步时间、文件 SHA256、工具与桌面版版本。
 - 切换后等图表真正就绪才读：指标算完、相邻两次读取的结构一致、输出和上一个品种不同。就绪证据（等了多久、是否重新切换、哪些指标读取时仍在跳动、哪些和上一个品种相同）写进 `data.json`，供调用方核对。
 - 采集在后台进程里跑，过程中不消耗代理的 token；代理只发起采集、读结果。
+- 布局里要求的指标缺了（`STUDY_MISSING`）或被隐藏了（`STUDY_HIDDEN`，图例上的眼睛被关掉）都会当场停下，不会产出缺一块的数据。
+- 只保留当天的批次：`output_prune` 列出今天以前的批次，加 `apply` 时把它们移到废纸篓，从不永久删除。
 
 ## 它不做什么
 
@@ -81,6 +84,7 @@ codex mcp add tradingview-capture -- <home>/.local/bin/tradingview-capture mcp
 | `symbol_data` | `read` | 某个品种的结构化数据，可只取表格、标签、绘图等部分，或最近 N 根 K 线 |
 | `image_crop` | `crop` | 按像素框裁 `image.png`；MCP 返回图像，命令行另存为文件 |
 | `diagnose` | `doctor` | 检查桌面版里采集要用的内部接口是否可用，不返回图表内容 |
+| `output_prune` | `prune` | 列出 `output_root` 下今天以前的批次；`apply` 时移到废纸篓（不永久删除） |
 
 `output_dir` 必须是绝对路径，父目录已存在且在 `output_root` 之下，目录本身还不存在。命令行示例：
 
@@ -93,7 +97,7 @@ uv run tradingview-capture read --output-dir ~/tradingview-captures/2026-10-14 \
   --symbol BINANCE:BTCUSDT.P --part tables --series-last 5
 ```
 
-错误一律带固定的错误码，例如 `TV_ALREADY_RUNNING`（桌面版已开着）、`TV_INTERNALS_CHANGED`（桌面版升级后内部结构变了）、`STUDY_MISSING`（布局里没有要求的指标）、`NOT_READY_TIMEOUT`（某品种迟迟没加载完）。
+错误一律带固定的错误码，例如 `TV_ALREADY_RUNNING`（桌面版已开着）、`TV_INTERNALS_CHANGED`（桌面版升级后内部结构变了）、`STUDY_MISSING`（布局里没有要求的指标）、`STUDY_HIDDEN`（要求的指标在布局里被隐藏）、`NOT_READY_TIMEOUT`（某品种迟迟没加载完）、`TRASH_UNAVAILABLE`（系统没有 `/usr/bin/trash`，清理什么都没动）。
 
 ## 输出目录
 
@@ -111,6 +115,33 @@ uv run tradingview-capture read --output-dir ~/tradingview-captures/2026-10-14 \
 ```
 
 所有文件权限为 600、只新建不覆盖，目录为 700。
+
+### data.json 里的指标数据
+
+每个指标（`studies[]`）除了表格、标签、线、框和最后值，还有：
+
+- `plots[]`：原生导出会带的每条曲线，含 CSV 列号、样式、`display`（Pine 的显示位：1 图上、2 数据窗口、4 价格轴、8 状态行）、`forceOverlay`（指标在别的窗格，这条却画在主图上）和 `lastValid`（最后一根有值的 K 的时间与数值；线停在过去时，价格轴上一直显示的就是它）。
+- `colors[]`：每个着色器逐根 K 的颜色，压成 `[起始 K 时间, 结束 K 时间, 颜色]` 的连续段；`target` 指向它着色的曲线、填色或 K 线组，没有 `target` 的是整根 K 线或背景的颜色。颜色是 CSS 字符串，`null` 表示那几根 K 不画；`unresolved` 是调色板里查不到的次数。
+- `fills[]`：两条曲线或两条水平线之间的填色（`between`），逐根 K 的颜色在 `colors` 里按 `target` 找。
+- `bands[]`：水平线的名字、数值、颜色、是否显示。
+- `visible`、`showLabelsOnPriceScale`、`format`：指标是否显示、是否在价格轴上标值、数值格式（`volume` 时 83424 显示成 83.42K）。
+- `tables[]` 的 `position` 与 `cellColors`（逐格文字色和底色），标签的 `yloc`、`textAlign` 与 `colorCss` / `textColorCss`，线的 `colorCss`。
+- `notExported`：工具没能导出的曲线类型和图元种类。不为空就是数据有缺口，不能当作"图上没有"。
+
+## 只保留当天的批次
+
+批次会越积越多。每天的采集用完以后（或者新一天第一次采集之前），先不带 `apply` 调一次看清单，再带 `apply` 调一次：
+
+```bash
+uv run tradingview-capture prune              # 只列出：今天的保留，今天以前的标成 wouldTrash
+uv run tradingview-capture prune --apply      # 把今天以前的批次移到废纸篓
+```
+
+- 只动 `output_root` 之下由本工具建的批次目录（有本工具写的 `batch.json`），不跟随符号链接，不碰别的文件。
+- "今天"按本机时区；一个批次最后一次开工、完成或续跑在哪天，就算哪天的。`--keep-days 2` 连昨天一起保留。
+- 只移到废纸篓，从不永久删除；需要时可以从废纸篓放回。空间要等用户清空废纸篓才会释放，代理不要替用户清空。
+- 采集进行中时 `--apply` 会报 `BATCH_LOCKED`，等批次结束再来。
+- 调用方自己从批次里做出来、放在批次目录以外的文件（裁图、报告等），按调用方自己的规则清理。
 
 ## 安全边界
 

@@ -67,6 +67,15 @@ check('studies', () => {
         primitives: Object.fromEntries(Object.keys(PRIMITIVE_KEYS).map((c) => [c, primitiveCount(all, c)])),
         // Labels, lines and boxes are placed on bars through this table.
         indexes: Boolean(s._graphics && Array.isArray(s._graphics._indexes)),
+        // Property nodes the export reads: plot styles, visibility, palettes, fill styles and bands.
+        properties: (() => {
+          try {
+            const nodes = s.properties().childs() || {};
+            return ['styles', 'visible', 'palettes', 'filledAreasStyle', 'bands'].filter((key) => Boolean(nodes[key]));
+          } catch (e) {
+            return [];
+          }
+        })(),
       };
     });
 });

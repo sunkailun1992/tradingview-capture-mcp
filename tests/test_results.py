@@ -48,6 +48,8 @@ def test_symbol_data_defaults(batch):
     assert data["studies"][0] == {
         "name": "Alpha",
         "id": "s1",
+        "pane": 0,
+        "visible": True,
         "tables": [{"id": "0", "rows": [["Head", None]]}],
         "lastValues": [["Quarter", 11.25]],
     }
@@ -65,6 +67,17 @@ def test_symbol_data_parts_and_series(batch):
         "rows": [["2000", "1.5", "2.5", "1", "2"]],
     }
     assert "identity" not in data
+
+
+def test_symbol_data_reads_colours_fills_bands_and_what_was_not_exported(batch):
+    config, out = batch
+    parts = ["plots", "colors", "fills", "bands", "notExported"]
+    study = results.symbol_data(config, str(out), SYMBOL, parts=parts)["studies"][0]
+    assert study["plots"][0]["lastValid"] == {"time": 2000, "value": 11.25}
+    assert study["colors"][0]["runs"] == [[1000, 2000, "rgba(255,0,0,1)"]]
+    assert study["fills"][0]["between"] == ["hline_0", "hline_1"]
+    assert study["bands"][0]["value"] == 90
+    assert study["notExported"] == {"plots": [], "graphics": []}
 
 
 @pytest.mark.parametrize(

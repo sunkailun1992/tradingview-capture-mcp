@@ -116,6 +116,19 @@ def test_the_self_check_moves_to_the_next_symbol_when_the_first_never_reaches_ex
     assert (summary["error"]["code"], summary["error"]["detail"]["missing"]) == ("STUDY_MISSING", ["Alpha"])
 
 
+def test_the_batch_stops_when_a_required_study_is_hidden_on_the_layout(config):
+    summary, chart, _ = capture(config, make_request(config), FakeChart(hidden_studies=("Alpha",)))
+    assert summary["state"] == "stopped"
+    assert (summary["error"]["code"], summary["error"]["detail"]["hidden"]) == ("STUDY_HIDDEN", ["Alpha"])
+    assert summary["totals"]["succeeded"] == 0
+    assert chart.symbol == "SSE_DLY:000001"
+
+
+def test_a_hidden_study_nobody_asked_for_does_not_matter(config):
+    summary, _, _ = capture(config, make_request(config), FakeChart(hidden_studies=("Beta",)))
+    assert summary["state"] == "finished"
+
+
 def test_later_failures_are_recorded_and_the_batch_goes_on(config):
     chart = FakeChart(missing_study=(SYMBOLS[1], "Alpha"), never_ready={SYMBOLS[2]})
     summary, _, _ = capture(config, make_request(config), chart)
