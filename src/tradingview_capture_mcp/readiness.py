@@ -62,6 +62,8 @@ class ReadyVerdict:
     ready: bool
     reason: str | None
     unchanged: tuple[str, ...] = ()
+    # Studies whose output still changed between the last two reads, as in an open market.
+    moving: tuple[str, ...] = ()
 
 
 def normalize_resolution(value: str) -> str:
@@ -100,7 +102,9 @@ def judge(
         unchanged = tuple(s.name for s in current.studies if old.get(s.id) == s.digest)
         if unchanged and elapsed < grace_sec:
             return ReadyVerdict(False, f"unchanged:{unchanged[0]}", unchanged)
-    return ReadyVerdict(True, None, unchanged)
+    before = {s.id: s.digest for s in previous.studies}
+    moving = tuple(s.name for s in current.studies if before.get(s.id) != s.digest)
+    return ReadyVerdict(True, None, unchanged, moving)
 
 
 def wait_until_ready(

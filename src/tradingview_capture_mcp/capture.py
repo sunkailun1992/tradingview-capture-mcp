@@ -536,6 +536,7 @@ def capture_symbol(
                 "lastBarTime": snapshot.last_bar_time,
                 "unchangedAfterSwitch": list(verdict.unchanged),
                 "reswitches": reswitches,
+                "digestMovingAtRead": list(verdict.moving),
                 "studies": [
                     {
                         "id": s.id,

@@ -121,3 +121,11 @@ def test_wait_until_ready_times_out_with_the_reason():
         )
     assert err.value.code == "NOT_READY_TIMEOUT"
     assert err.value.detail["reason"] == "symbol"
+
+
+def test_studies_still_moving_at_the_read_are_named():
+    ticking = snap(studies=(("s1", "Alpha", 2, 2000, "price moved"),))
+    result = verdict(snap(), previous=ticking)
+    assert result.ready
+    assert result.moving == ("Alpha",)
+    assert verdict(snap()).moving == ()

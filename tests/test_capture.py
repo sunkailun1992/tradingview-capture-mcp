@@ -133,6 +133,8 @@ def test_waits_for_the_restored_layout_to_finish_loading_before_switching(config
 def test_a_live_market_whose_values_keep_moving_is_still_captured(config):
     summary, _, _ = capture(config, make_request(config), FakeChart(ticking=True))
     assert summary["totals"]["succeeded"] == 3, summary
+    data = read_json(config.output_root / "batch" / "raw" / safe_name(SYMBOLS[0]) / "data.json")
+    assert data["readiness"]["digestMovingAtRead"] == ["Alpha", "Beta"]
 
 
 def test_a_switch_the_layout_undoes_is_made_again(config):
