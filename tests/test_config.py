@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from tradingview_capture_mcp import config as config_module
 from tradingview_capture_mcp.config import DEFAULT_DEBUG_PORT, Config, config_path, load_config
 from tradingview_capture_mcp.errors import CaptureError
 
@@ -72,3 +73,26 @@ def test_missing_file(tmp_path):
 def test_environment_override(monkeypatch, tmp_path):
     monkeypatch.setenv("TRADINGVIEW_CAPTURE_CONFIG", str(tmp_path / "x.toml"))
     assert config_path() == tmp_path / "x.toml"
+
+
+def _volume_root(tmp_path, monkeypatch):
+    volumes = tmp_path.resolve() / "Volumes"
+    root = volumes / "Archive" / "captures"
+    root.mkdir(parents=True)
+    monkeypatch.setattr(config_module, "VOLUMES", volumes)
+    return volumes, write(tmp_path / "c.toml", f'output_root = "{root}"\n')
+
+
+def test_rejects_an_output_root_left_behind_by_an_unmounted_disk(tmp_path, monkeypatch):
+    volumes, path = _volume_root(tmp_path, monkeypatch)
+    with pytest.raises(CaptureError) as err:
+        load_config(path)
+    assert err.value.code == "CONFIG_INVALID"
+    assert "not mounted" in err.value.message
+    assert err.value.detail["volume"] == str(volumes / "Archive")
+
+
+def test_accepts_an_output_root_on_a_mounted_disk(tmp_path, monkeypatch):
+    volumes, path = _volume_root(tmp_path, monkeypatch)
+    monkeypatch.setattr(os.path, "ismount", lambda p: Path(p) == volumes / "Archive")
+    assert load_config(path).output_root == volumes / "Archive" / "captures"

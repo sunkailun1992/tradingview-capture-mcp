@@ -13,6 +13,7 @@ DEFAULT_CONFIG_PATH = Path.home() / ".config" / "tradingview-capture-mcp" / "con
 DEFAULT_APP_PATH = Path("/Applications/TradingView.app")
 DEFAULT_DEBUG_PORT = 9333
 KNOWN_KEYS = {"app_path", "debug_port", "output_root"}
+VOLUMES = Path("/Volumes")
 
 
 @dataclass(frozen=True)
@@ -24,6 +25,21 @@ class Config:
     @property
     def app_binary(self) -> Path:
         return self.app_path / "Contents" / "MacOS" / "TradingView"
+
+
+def _unmounted_volume(root: Path) -> Path | None:
+    """The /Volumes/<name> a directory sits on when that disk is not mounted.
+
+    With the disk away, an ordinary /Volumes/<name> folder can be left on the startup disk, and batches
+    written there would silently land on the wrong disk."""
+    try:
+        relative = root.relative_to(VOLUMES)
+    except ValueError:
+        return None
+    if not relative.parts:
+        return None
+    volume = VOLUMES / relative.parts[0]
+    return None if os.path.ismount(volume) else volume
 
 
 def config_path() -> Path:
@@ -61,6 +77,14 @@ def load_config(path: Path | None = None) -> Config:
             "output_root must be an existing directory (is the disk mounted?)",
             {"output_root": str(root)},
         )
+    root = root.resolve()
+    volume = _unmounted_volume(root)
+    if volume is not None:
+        raise CaptureError(
+            CONFIG_INVALID,
+            "output_root is under a disk that is not mounted",
+            {"output_root": str(root), "volume": str(volume)},
+        )
     port = raw.get("debug_port", DEFAULT_DEBUG_PORT)
     if not isinstance(port, int) or isinstance(port, bool) or not 1024 <= port <= 65535:
         raise CaptureError(
@@ -69,4 +93,4 @@ def load_config(path: Path | None = None) -> Config:
     app = raw.get("app_path", str(DEFAULT_APP_PATH))
     if not isinstance(app, str) or not app:
         raise CaptureError(CONFIG_INVALID, "app_path must be a non-empty string", {})
-    return Config(app_path=Path(app).expanduser(), debug_port=port, output_root=root.resolve())
+    return Config(app_path=Path(app).expanduser(), debug_port=port, output_root=root)

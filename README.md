@@ -48,7 +48,7 @@ uv sync
 本机配置写在 `~/.config/tradingview-capture-mcp/config.toml`，权限设为 600：
 
 ```toml
-output_root = "~/tradingview-captures"        # 所有批次都写在这个目录之下，必须已存在
+output_root = "~/tradingview-captures"        # 所有批次都写在这个目录之下，必须已存在；在 /Volumes 下的外置盘上时，盘必须已挂载
 debug_port = 9333                             # 可选，默认 9333
 app_path = "/Applications/TradingView.app"    # 可选
 ```
