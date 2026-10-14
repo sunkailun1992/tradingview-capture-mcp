@@ -65,6 +65,8 @@ check('studies', () => {
           ? ['dwgtablecells', 'dwglabels', 'dwglines', 'dwgboxes'].filter((k) => all[k] && typeof all[k].get === 'function')
           : [],
         primitives: Object.fromEntries(Object.keys(PRIMITIVE_KEYS).map((c) => [c, primitiveCount(all, c)])),
+        // Labels, lines and boxes are placed on bars through this table.
+        indexes: Boolean(s._graphics && Array.isArray(s._graphics._indexes)),
       };
     });
 });

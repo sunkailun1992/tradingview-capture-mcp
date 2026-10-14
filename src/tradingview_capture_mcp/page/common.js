@@ -25,6 +25,16 @@ function barTime(index) {
   return bar ? bar[0] : null;
 }
 
+// Labels, lines and boxes keep x as a slot in the study's _graphics._indexes, which holds the bar index. A slot
+// below -1000000 (TradingView uses -2000000) is a bar outside the loaded range; an index past the last bar is a
+// position drawn into the future. Either way there is no bar time.
+function graphicsBar(source, x) {
+  const indexes = source._graphics && source._graphics._indexes;
+  if (!Array.isArray(indexes) || typeof x !== 'number' || x < 0 || x >= indexes.length) return null;
+  const index = indexes[x];
+  return typeof index === 'number' && index > -1000000 ? index : null;
+}
+
 function studyName(source) {
   const meta = source.metaInfo();
   return meta.description || meta.shortDescription || '';
