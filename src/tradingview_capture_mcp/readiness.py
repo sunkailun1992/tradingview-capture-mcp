@@ -97,7 +97,7 @@ def judge(
     if previous is None or previous.structure() != current.structure():
         return ReadyVerdict(False, "unstable")
     unchanged: tuple[str, ...] = ()
-    if before_switch is not None and before_switch.symbol != target:
+    if before_switch is not None and not same_symbol(before_switch.symbol, target):
         old = {s.id: s.digest for s in before_switch.studies}
         unchanged = tuple(s.name for s in current.studies if old.get(s.id) == s.digest)
         if unchanged and elapsed < grace_sec:
