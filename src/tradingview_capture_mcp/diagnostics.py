@@ -56,6 +56,9 @@ def problems(report: dict[str, Any]) -> list[str]:
                 break
         if any("broken" in (study.get("primitives") or {}).values() for study in studies):
             found.append("studies.primitives")
+        # Without the index table labels, lines and boxes cannot be placed on their bars.
+        if any(study.get("indexes") is not True for study in studies):
+            found.append("studies.indexes")
     if "shapes" not in found:
         shapes = checks["shapes"].get("detail") or []
         if any(not isinstance(shape, dict) or shape.get("points") != "function" for shape in shapes):

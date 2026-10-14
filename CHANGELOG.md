@@ -16,6 +16,14 @@
 - 私有内容扫描（提交前钩子与 CI）。
 - 斐波回撤各档价位：从第二个端点量向第一个端点（`reverse` 时对调），已与图上的价位标签逐档核对一致。
 
+### 修复
+
+- 标签、线、框的 K 线位置：图元的 x 是指标图形索引表（`_graphics._indexes`）的下标，表里才是 K 线序号；以前直接把 x 当 K 线序号，日期都会算错。现在 `index` 是 K 线序号，K 线在已加载范围之外或画在未来位置时 `index` / `time` 为 null。`diagnose` 增加这张表的检查（`studies.indexes`）。
+
+### 新增（续）
+
+- `identity` 增加 `priceScale`、`minMove`（价格按 minMove / priceScale 的步长显示，priceScale 100 即两位小数）。
+
 ### 已核对
 
 - 在 TradingView 桌面版 3.4.1 上整批采集 50 个品种：全部成功，约 3 分钟。

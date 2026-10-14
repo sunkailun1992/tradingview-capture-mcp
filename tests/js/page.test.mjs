@@ -24,8 +24,13 @@ function fixture(overrides = {}) {
     styles: { plot_0: { title: 'Quarter' }, plot_2: { title: 'Shapes' } },
     rows: [[1000, 10.5, 0, 1, 1], [2000, 11.25, 1, null, 0]],
     cells: [{ id: 1, tid: 0, row: 0, col: 0, t: 'Head' }, { id: 2, tid: 0, row: 1, col: 2, t: 'NaN' }],
-    labels: [{ id: 7, x: 1, y: 2.5, t: '9.5', st: 'lup', ci: null, tci: 4278226175, sz: 'small', tt: '' }],
-    lines: [{ id: 9, x1: 0, y1: 1, x2: 1, y2: 2, ex: 'n', st: 0, ci: 255, w: 1 }],
+    // x is a slot in indexes: slot 0 is a bar before the loaded range, slots 1 and 2 are bars 0 and 1.
+    indexes: [-2000000, 0, 1],
+    labels: [
+      { id: 7, x: 2, y: 2.5, t: '9.5', st: 'lup', ci: null, tci: 4278226175, sz: 'small', tt: '' },
+      { id: 8, x: 0, y: 1.5, t: '7', st: 'ldn', ci: null, tci: null, sz: 'small', tt: '' },
+    ],
+    lines: [{ id: 9, x1: 1, y1: 1, x2: 2, y2: 2, ex: 'n', st: 0, ci: 255, w: 1 }],
   });
   const band = makeStudy({
     id: 'b1', name: 'Band', zorder: -10000, plots: [{ id: 'plot_0', type: 'line' }],
@@ -49,11 +54,11 @@ function fixture(overrides = {}) {
 
 test('extract gives boxes the bar times of their edges', async () => {
   const zone = makeStudy({
-    id: 'z1', name: 'Zones', zorder: -10000, plots: [], rows: [[1000], [2000]],
-    boxes: [{ id: 5, x1: 0, y1: 2, x2: 1, y2: 1, bc: 255 }],
+    id: 'z1', name: 'Zones', zorder: -10000, plots: [], rows: [[1000], [2000]], indexes: [-2000000, 0, 1],
+    boxes: [{ id: 5, x1: 1, y1: 2, x2: 2, y2: 1, bc: 255 }],
   });
   const result = await run('extract', {}, fixture({ panes: [[zone]], shapes: [] }));
-  assert.deepEqual(result.studies[0].boxes, [{ id: 5, x1: 0, y1: 2, x2: 1, y2: 1, bc: 255, time1: 1000, time2: 2000 }]);
+  assert.deepEqual(result.studies[0].boxes, [{ id: 5, x1: 1, y1: 2, x2: 2, y2: 1, bc: 255, index1: 0, time1: 1000, index2: 1, time2: 2000 }]);
 });
 
 test('extract orders studies by pane then z-order and writes export-shaped CSV', async () => {
@@ -72,7 +77,11 @@ test('extract returns tables, labels, lines, last values, drawings and identity'
   const result = await run('extract', {}, fixture());
   const [assist] = result.studies;
   assert.deepEqual(assist.tables, [{ id: '0', rows: [['Head'], [null, null, 'NaN']] }]);
-  assert.deepEqual(assist.labels, [{ id: 7, index: 1, time: 2000, price: 2.5, text: '9.5', style: 'lup', color: null, textColor: 4278226175, size: 'small', tooltip: null }]);
+  // Bar times come through the graphics index table; a label on a bar outside the loaded range has none.
+  assert.deepEqual(assist.labels, [
+    { id: 7, index: 1, time: 2000, price: 2.5, text: '9.5', style: 'lup', color: null, textColor: 4278226175, size: 'small', tooltip: null },
+    { id: 8, index: null, time: null, price: 1.5, text: '7', style: 'ldn', color: null, textColor: null, size: 'small', tooltip: null },
+  ]);
   assert.deepEqual(assist.lines, [{ id: 9, index1: 0, time1: 1000, price1: 1, index2: 1, time2: 2000, price2: 2, extend: 'n', style: 0, color: 255, width: 1 }]);
   assert.deepEqual(assist.lastValues, [['Quarter', 11.25], ['Shapes', null]]);
   assert.deepEqual(result.drawings, [{
@@ -83,6 +92,7 @@ test('extract returns tables, labels, lines, last values, drawings and identity'
   assert.deepEqual(result.identity, {
     symbol: 'BINANCE:BTCUSDT.P', resolution: '1D', description: 'Bitcoin / TetherUS', exchange: 'Binance',
     barsCount: 2, firstBarTime: 1000, lastBar: { time: 2000, open: 1.5, high: 2.5, low: 1, close: 2 },
+    priceScale: 100, minMove: 1,
   });
 });
 
@@ -131,7 +141,8 @@ test('alive and diagnose never throw', async () => {
   assert.deepEqual(studies[0].collections, ['dwgtablecells', 'dwglabels', 'dwglines', 'dwgboxes']);
   const assist = studies.find((s) => s.plots === 4); // diagnose lists studies in the chart's internal order
   // No boxes: the live chart then holds an empty map where the boxes would be, which means none, not broken.
-  assert.deepEqual(assist.primitives, { dwgtablecells: 2, dwglabels: 1, dwglines: 1, dwgboxes: null });
+  assert.deepEqual(assist.primitives, { dwgtablecells: 2, dwglabels: 2, dwglines: 1, dwgboxes: null });
+  assert.equal(assist.indexes, true);
   assert.deepEqual(report.checks.find((c) => c.name === 'studyCount').detail, { public: 3, matched: 3 });
   assert.deepEqual(report.checks.find((c) => c.name === 'shapes').detail, [{ name: 'fib_retracement', points: 'function' }]);
 });

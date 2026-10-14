@@ -15,6 +15,9 @@ const identity = {
   barsCount: bars.size(),
   firstBarTime: barTime(bars.firstIndex()),
   lastBar: last ? { time: last[0], open: num(last[1]), high: num(last[2]), low: num(last[3]), close: num(last[4]) } : null,
+  // Prices are shown in steps of minMove / priceScale (priceScale 100 means two decimals).
+  priceScale: info && typeof info.pricescale === 'number' ? info.pricescale : null,
+  minMove: info && typeof info.minmov === 'number' ? info.minmov : null,
 };
 
 function plain(value) {
@@ -38,19 +41,21 @@ const studies = ordered.map((source) => {
     while (row.length <= cell.col) row.push(null);
     row[cell.col] = text(cell.t);
   }
+  const at = (x) => graphicsBar(source, x);
   const labels = primitives(source, 'dwglabels', 'labels').map((l) => ({
-    id: l.id, index: l.x, time: barTime(l.x), price: num(l.y), text: text(l.t) || '',
+    id: l.id, index: at(l.x), time: barTime(at(l.x)), price: num(l.y), text: text(l.t) || '',
     style: l.st || null, color: l.ci === undefined ? null : l.ci, textColor: l.tci === undefined ? null : l.tci,
     size: l.sz || null, tooltip: l.tt || null,
   }));
   const lines = primitives(source, 'dwglines', 'lines').map((l) => ({
-    id: l.id, index1: l.x1, time1: barTime(l.x1), price1: num(l.y1), index2: l.x2, time2: barTime(l.x2), price2: num(l.y2),
+    id: l.id, index1: at(l.x1), time1: barTime(at(l.x1)), price1: num(l.y1),
+    index2: at(l.x2), time2: barTime(at(l.x2)), price2: num(l.y2),
     extend: l.ex || null, style: l.st === undefined ? null : l.st, color: l.ci === undefined ? null : l.ci,
     width: l.w === undefined ? null : l.w,
   }));
   // Boxes keep every field TradingView stores; their left and right edges also get bar times, as lines do.
   const boxes = primitives(source, 'dwgboxes', 'boxes').map((b) => ({
-    ...(plain(b) || { id: b.id }), time1: barTime(b.x1), time2: barTime(b.x2),
+    ...(plain(b) || { id: b.id }), index1: at(b.x1), time1: barTime(at(b.x1)), index2: at(b.x2), time2: barTime(at(b.x2)),
   }));
   const data = source.data();
   const row = data && data.size() > 0 ? data.valueAt(lastIndex) : null;

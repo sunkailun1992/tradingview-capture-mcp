@@ -30,6 +30,7 @@ def check(report, name):
             "mainSeriesBars.methods",
         ),
         (lambda r: check(r, "studies")["detail"][0].update(collections=["dwglabels"]), "studies.shape"),
+        (lambda r: check(r, "studies")["detail"][0].update(indexes=False), "studies.indexes"),
         (
             lambda r: check(r, "studies")["detail"][0]["primitives"].update(dwglabels="broken"),
             "studies.primitives",

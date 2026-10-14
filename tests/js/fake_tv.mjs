@@ -18,7 +18,9 @@ function primitiveCollection(key, items, nested) {
   return collection;
 }
 
-export function makeStudy({ id, name, zorder, plots, rows, styles = {}, ohlcPlots, cells = [], labels = [], lines = [], boxes = [], status = 2 }) {
+// Labels, lines and boxes store x as a slot in _graphics._indexes, which holds the bar index; -2000000 marks a bar
+// outside the loaded range (probed on TradingView Desktop 3.4.1, 2026-10-14).
+export function makeStudy({ id, name, zorder, plots, rows, styles = {}, ohlcPlots, cells = [], labels = [], lines = [], boxes = [], status = 2, indexes = [] }) {
   return {
     id: () => id,
     zorder: () => zorder,
@@ -27,6 +29,7 @@ export function makeStudy({ id, name, zorder, plots, rows, styles = {}, ohlcPlot
     data: () => plotList(rows),
     inputs: () => ({ length: 14 }),
     _graphics: {
+      _indexes: indexes,
       _primitivesCollection: {
         dwgtablecells: primitiveCollection('tableCells', cells, false),
         dwglabels: primitiveCollection('labels', labels, true),
@@ -61,7 +64,7 @@ export function makeTradingView({ symbol = 'BINANCE:BTCUSDT.P', resolution = '1D
     },
   };
   const model = {
-    mainSeries: () => ({ bars: () => bars, symbolInfo: () => ({ description: 'Bitcoin / TetherUS', exchange: 'Binance' }) }),
+    mainSeries: () => ({ bars: () => bars, symbolInfo: () => ({ description: 'Bitcoin / TetherUS', exchange: 'Binance', pricescale: 100, minmov: 1 }) }),
     model: () => ({
       dataSources: () => [...studies].reverse().concat([builtin]),
       panes: () => panes.map((list) => ({ dataSources: () => list })),

@@ -32,6 +32,7 @@ OK_DIAGNOSE = {
                     "data": {"size": 2, "valueAt": "function"},
                     "collections": ["dwgtablecells", "dwglabels", "dwglines", "dwgboxes"],
                     "primitives": {"dwgtablecells": 3, "dwglabels": 0, "dwglines": None, "dwgboxes": None},
+                    "indexes": True,
                 }
             ],
         },
