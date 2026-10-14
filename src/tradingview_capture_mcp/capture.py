@@ -31,6 +31,7 @@ from .errors import (
 from .images import png_size
 from .readiness import ReadySnapshot, judge, normalize_resolution, wait_until_ready
 from .store import (
+    JOBS_DIR,
     BatchLock,
     dumps_json,
     ensure_dir,
@@ -154,26 +155,37 @@ class Progress:
         self.update(current=None)
 
 
+SUCCESS_SUFFIX = ".success.json"
+
+
 def previous_desktop_version(output_root: Path, exclude: Path) -> str | None:
-    """Desktop version of the newest finished batch from this tool under the output root."""
+    """Desktop version of the newest finished batch from this tool under the output root.
+
+    Every batch with at least one capture leaves a success record in the root's jobs folder, wherever the
+    batch itself lives; manifests one or two levels down are read too, for batches that left no record."""
     best: tuple[float, str | None] | None = None
-    for path in [
-        *output_root.glob("*/capture-manifest.json"),
-        *output_root.glob("*/*/capture-manifest.json"),
-    ]:
-        if path.parent == exclude:
-            continue
+    candidates = [
+        *((path, False) for path in (output_root / JOBS_DIR).glob(f"*{SUCCESS_SUFFIX}")),
+        *((path, True) for path in output_root.glob("*/capture-manifest.json")),
+        *((path, True) for path in output_root.glob("*/*/capture-manifest.json")),
+    ]
+    for path, is_manifest in candidates:
         try:
-            manifest = read_json(path)
+            record = read_json(path)
         except (OSError, ValueError):
             continue
-        if not isinstance(manifest, dict) or (manifest.get("tool") or {}).get("name") != TOOL_NAME:
+        if not isinstance(record, dict) or (record.get("tool") or {}).get("name") != TOOL_NAME:
             continue
-        if manifest.get("state") != "finished" or (manifest.get("totals") or {}).get("succeeded", 0) <= 0:
+        if is_manifest:
+            if path.parent == exclude:
+                continue
+            if record.get("state") != "finished" or (record.get("totals") or {}).get("succeeded", 0) <= 0:
+                continue
+        elif record.get("outputDir") == str(exclude):
             continue
-        finished = float((manifest.get("finishedAt") or {}).get("unix") or 0)
+        finished = float((record.get("finishedAt") or {}).get("unix") or 0)
         if best is None or finished > best[0]:
-            best = (finished, (manifest.get("desktop") or {}).get("version"))
+            best = (finished, (record.get("desktop") or {}).get("version"))
     return best[1] if best else None
 
 
@@ -327,6 +339,8 @@ def run_capture(
             replace_json(out / "capture-manifest.json", manifest)
         else:
             write_json_new(out / "capture-manifest.json", manifest)
+        if state == "finished" and totals["succeeded"] > 0 and info is not None:
+            _record_success(config.output_root, job_id, attempt, out, manifest["finishedAt"], info.version)
         progress.update(state="failed" if stopped else "finished", current=None, error=error)
         if interrupted is not None:
             raise interrupted
@@ -344,6 +358,29 @@ def run_capture(
             "desktopVersionChanged": changed,
             "error": error,
         }
+
+
+def _record_success(
+    root: Path, job_id: str, attempt: int, out: Path, finished_at: dict[str, Any], version: str
+) -> None:
+    """Leave a record the next batch finds however deep this batch sits under the root."""
+    folder = root / JOBS_DIR
+    ensure_dir(folder)
+    try:
+        write_json_new(
+            folder / f"{job_id}.{attempt}{SUCCESS_SUFFIX}",
+            {
+                "tool": {"name": TOOL_NAME, "version": __version__},
+                "jobId": job_id,
+                "attempt": attempt,
+                "outputDir": str(out),
+                "finishedAt": finished_at,
+                "desktop": {"version": version},
+            },
+        )
+    except CaptureError as exc:
+        if exc.code != OUTPUT_EXISTS:  # a record for this job and attempt is already there
+            raise
 
 
 def _previous_state(out: Path) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:

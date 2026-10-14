@@ -16,6 +16,8 @@ from .errors import BATCH_LOCKED, INVALID_ARGUMENT, OUTPUT_EXISTS, OUTPUT_OUTSID
 FILE_MODE = 0o600
 DIR_MODE = 0o700
 LOCK_NAME = ".tradingview-capture.lock"
+# Per-root state kept between batches: job index, requests, logs and success records.
+JOBS_DIR = ".tradingview-capture-jobs"
 _UNSAFE = re.compile(r"[^A-Za-z0-9._-]")
 
 

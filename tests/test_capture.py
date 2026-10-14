@@ -31,12 +31,12 @@ def make_request(config, **changes):
     return dataclasses.replace(base, **changes)
 
 
-def capture(config, request, chart=None, **desktop_options):
+def capture(config, request, chart=None, *, job_id="a" * 32, **desktop_options):
     chart = chart or FakeChart()
     desktop = FakeDesktop(chart, **desktop_options)
     clock = FakeClock()
     summary = run_capture(
-        request, config, job_id="a" * 32, desktop=desktop, pid=4242, sleep=clock.sleep, clock=clock
+        request, config, job_id=job_id, desktop=desktop, pid=4242, sleep=clock.sleep, clock=clock
     )
     return summary, chart, desktop
 
@@ -330,6 +330,22 @@ def test_a_desktop_version_change_is_flagged(config):
     manifest = read_json(config.output_root / "batch" / "capture-manifest.json")
     assert summary["desktopVersionChanged"] is True
     assert manifest["desktop"]["previousVersion"] == "3.4.0"
+
+
+def test_a_version_change_is_flagged_after_a_batch_nested_deep_under_the_root(config):
+    deep = config.output_root / "2026" / "10" / "14"
+    deep.mkdir(parents=True)
+    capture(config, make_request(config, output_dir=str(deep / "day")), job_id="b" * 32, version="3.4.0")
+    summary, _, _ = capture(config, make_request(config))
+    manifest = read_json(config.output_root / "batch" / "capture-manifest.json")
+    assert (summary["desktopVersionChanged"], manifest["desktop"]["previousVersion"]) == (True, "3.4.0")
+
+
+def test_a_batch_without_any_capture_leaves_no_success_record(config):
+    failing = FakeChart(unknown={SYMBOLS[1]})
+    capture(config, make_request(config, symbols=SYMBOLS[1:2]), failing, job_id="b" * 32, version="3.4.0")
+    summary, _, _ = capture(config, make_request(config, output_dir=str(config.output_root / "next")))
+    assert summary["desktopVersionChanged"] is False
 
 
 @pytest.mark.parametrize(

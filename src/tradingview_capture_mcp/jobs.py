@@ -14,9 +14,17 @@ from .capture import CaptureRequest, run_capture, validate_request
 from .config import Config
 from .driver import RealDesktop
 from .errors import BATCH_LOCKED, INVALID_ARGUMENT, NOT_FOUND, OUTPUT_EXISTS, CaptureError
-from .store import FILE_MODE, ensure_dir, lock_is_held, read_json, resolve_inside_root, stamp, write_json_new
+from .store import (
+    FILE_MODE,
+    JOBS_DIR,
+    ensure_dir,
+    lock_is_held,
+    read_json,
+    resolve_inside_root,
+    stamp,
+    write_json_new,
+)
 
-JOBS_DIR = ".tradingview-capture-jobs"
 _JOB_ID = re.compile(r"[0-9a-f]{32}")
 
 
