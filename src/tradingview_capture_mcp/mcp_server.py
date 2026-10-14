@@ -27,8 +27,9 @@ INSTRUCTIONS = (
     "check them against the image) and digestMovingAtRead (studies still changing at the read, as in an open "
     "market). TradingView Desktop must not be open when a capture or diagnose starts: the tool launches "
     "it itself with a loopback-only debugging port and quits it at the end. If the user has it open, full "
-    "screen or not, the job fails with TV_ALREADY_RUNNING; ask the user to quit it with Cmd+Q, never kill "
-    "it, then call capture_retry on the same output_dir. Errors carry a stable code such as "
+    "screen or not, capture_start fails at once with TV_ALREADY_RUNNING and creates nothing; ask the user "
+    "to quit it with Cmd+Q, never kill it, then call it again (capture_retry continues a batch that "
+    "stopped this way mid-run). Errors carry a stable code such as "
     "TV_ALREADY_RUNNING or TV_INTERNALS_CHANGED."
 )
 

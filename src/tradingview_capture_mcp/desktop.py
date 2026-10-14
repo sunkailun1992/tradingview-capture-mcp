@@ -58,6 +58,18 @@ def parse_version(info: dict[str, Any]) -> str:
     return match.group(1) if match else "unknown"
 
 
+def already_running(pids: list[int]) -> CaptureError:
+    """The error for a TradingView Desktop the user started; it says why and what to do."""
+    return CaptureError(
+        TV_ALREADY_RUNNING,
+        "TradingView Desktop is already running without this tool's debugging port. The tool has to "
+        "start it itself and quits it when the batch ends; full screen or not makes no difference. Ask "
+        "the user to quit it completely (Cmd+Q; closing the window is not enough) and never kill it, "
+        "then retry; capture_retry continues a batch that stopped this way.",
+        {"pids": pids},
+    )
+
+
 def launch(config: Config, *, startup_timeout: float = 40.0, poll: float = 0.5) -> DesktopSession:
     """Start TradingView Desktop with the DevTools port; refuse to touch a copy the user already runs."""
     if not config.app_binary.is_file():
@@ -66,14 +78,7 @@ def launch(config: Config, *, startup_timeout: float = 40.0, poll: float = 0.5) 
         )
     pids = running_pids()
     if pids:
-        raise CaptureError(
-            TV_ALREADY_RUNNING,
-            "TradingView Desktop is already running without this tool's debugging port. The tool has to "
-            "start it itself and quits it when the batch ends; full screen or not makes no difference. Ask "
-            "the user to quit it completely (Cmd+Q; closing the window is not enough) and never kill it, "
-            "then retry; capture_retry continues a batch that stopped this way.",
-            {"pids": pids},
-        )
+        raise already_running(pids)
     if listening_addresses(config.debug_port):
         raise CaptureError(PORT_IN_USE, "the debug port is already in use", {"port": config.debug_port})
     process = subprocess.Popen(

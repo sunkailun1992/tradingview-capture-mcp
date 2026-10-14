@@ -147,7 +147,7 @@ MCP 工具名和参数名用 snake_case，输出文件里的 JSON 键用 camelCa
 | 错误码 | 含义 | 处理 |
 |---|---|---|
 | `TV_NOT_INSTALLED` | 找不到桌面版 | 停止 |
-| `TV_ALREADY_RUNNING` | 桌面版已经开着（全屏还是窗口都一样），没有本工具的调试端口；调试端口只能在启动时打开 | 停止。报错信息直接写明处理办法：请用户用 ⌘Q 完全退出，再对同一目录调 `capture_retry`；绝不替用户结束进程 |
+| `TV_ALREADY_RUNNING` | 桌面版已经开着（全屏还是窗口都一样），没有本工具的调试端口；调试端口只能在启动时打开 | `capture_start` / `capture_retry` 在起后台任务前就检查，当场报错、不建任何文件；报错信息直接写明处理办法：请用户用 ⌘Q 完全退出后重调。批次中途因此停下时，对同一目录调 `capture_retry`。绝不替用户结束进程 |
 | `CDP_NOT_LOCAL` | 调试端口不是只监听 127.0.0.1 | 停止，并退出本工具启动的进程 |
 | `LAYOUT_NOT_FOUND` / `LAYOUT_NOT_UNIQUE` | 布局标签页不存在或不唯一 | 停止 |
 | `TV_INTERNALS_CHANGED` | 自检失败 | 停止，附失效点，见第 8 节 |
