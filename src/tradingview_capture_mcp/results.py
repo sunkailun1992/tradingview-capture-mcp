@@ -86,6 +86,7 @@ def symbol_data(
                 "id": s.get("id"),
                 "pane": s.get("pane"),
                 "visible": s.get("visible"),
+                "unresolvedGraphicColors": s.get("unresolvedGraphicColors"),
                 **{p: s.get(p) for p in study_parts},
             }
             for s in data.get("studies", [])

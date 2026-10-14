@@ -50,6 +50,7 @@ def test_symbol_data_defaults(batch):
         "id": "s1",
         "pane": 0,
         "visible": True,
+        "unresolvedGraphicColors": 0,
         "tables": [{"id": "0", "rows": [["Head", None]]}],
         "lastValues": [["Quarter", 11.25]],
     }

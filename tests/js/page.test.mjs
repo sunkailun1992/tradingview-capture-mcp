@@ -128,6 +128,35 @@ test('extract says whether each study is shown and what it could not export', as
   assert.deepEqual(delta.notExported, { plots: [{ id: 'plot_2', type: 'data', target: null }], graphics: ['dwgpolylines'] });
 });
 
+test('a drawing kind that cannot be read is reported, never taken for empty', async () => {
+  const odd = makeStudy({
+    id: 'q1', name: 'Odd', zorder: -10000, plots: [], rows: [[1000], [2000]],
+    graphics: {
+      dwglinefills: { 7: { id: 7 } }, // a plain object instead of a Map
+      dwgpolylines: { values: () => { throw new Error('changed'); } },
+    },
+  });
+  const [study] = (await run('extract', {}, fixture({ panes: [[odd]], shapes: [] }))).studies;
+  assert.deepEqual(study.notExported.graphics.sort(), ['dwglinefills', 'dwgpolylines']);
+});
+
+test('tables, labels and lines of a palette script take their colours from the shared palette', async () => {
+  const osc = makeStudy({
+    id: 'p1', name: 'Panel', zorder: -10000, plots: [], rows: [[1000], [2000]],
+    meta: { palettes: { palette_common: { colors: { 0: { name: 'Color 0' }, 1: { name: 'Color 1' } } } } },
+    props: { palettes: { palette_common: { colors: { 0: { color: '#DBDBDB' }, 1: { color: 'rgba(255,152,0,0.2)' } } } } },
+    tables: [{ id: 1, pos: 'top_right' }],
+    // 9 is not a slot of the palette: unknown, which must not read as "no colour".
+    cells: [{ id: 1, tid: 1, row: 0, col: 0, t: 'Head', tc: 0, bgc: 1 }, { id: 2, tid: 1, row: 0, col: 1, t: 'x', tc: 0, bgc: 9 }],
+    indexes: [0, 1],
+    labels: [{ id: 3, x: 1, y: 5, t: 'L', st: 'n', ci: 'rgba(1,2,3,1)', tci: 1, sz: 'small', tt: '' }],
+  });
+  const [study] = (await run('extract', {}, fixture({ panes: [[osc]], shapes: [] }))).studies;
+  assert.deepEqual(study.tables[0].cellColors, [[{ text: '#DBDBDB', background: 'rgba(255,152,0,0.2)' }, { text: '#DBDBDB', background: null }]]);
+  assert.deepEqual([study.labels[0].colorCss, study.labels[0].textColorCss], ['rgba(1,2,3,1)', 'rgba(255,152,0,0.2)']);
+  assert.equal(study.unresolvedGraphicColors, 1);
+});
+
 test('extract gives boxes the bar times of their edges', async () => {
   const zone = makeStudy({
     id: 'z1', name: 'Zones', zorder: -10000, plots: [], rows: [[1000], [2000]], indexes: [-2000000, 0, 1],

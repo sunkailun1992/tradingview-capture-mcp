@@ -39,9 +39,16 @@ def require_trash_command() -> None:
 def move_to_trash(path: Path) -> None:
     """Hand one folder to the system's trash command; a folder still in place afterwards is an error."""
     require_trash_command()
-    result = subprocess.run(  # noqa: S603 - fixed argument list, no shell
-        [str(TRASH_COMMAND), str(path)], capture_output=True, text=True, check=False, timeout=300
-    )
+    try:
+        result = subprocess.run(  # noqa: S603 - fixed argument list, no shell
+            [str(TRASH_COMMAND), str(path)], capture_output=True, text=True, check=False, timeout=300
+        )
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        raise CaptureError(
+            TRASH_FAILED,
+            "the trash command did not finish; check where the folder is before trying again",
+            {"path": str(path), "error": type(exc).__name__},
+        ) from exc
     if result.returncode != 0 or path.exists():
         raise CaptureError(
             TRASH_FAILED,
@@ -56,6 +63,23 @@ def _tool_batch(folder: Path) -> bool:
     except (OSError, ValueError):
         return False
     return isinstance(record, dict) and (record.get("tool") or {}).get("name") == TOOL_NAME
+
+
+def _written_here(folder: Path) -> bool:
+    """The batch's own job.json names this very folder; a copy someone made elsewhere names the original."""
+    try:
+        recorded = read_json(folder / "job.json").get("outputDir")
+        return isinstance(recorded, str) and os.path.samefile(recorded, folder)
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
+def _holds_another_batch(folder: Path) -> bool:
+    for current, dirs, files in os.walk(folder, followlinks=False):
+        if Path(current) != folder and "batch.json" in files and _tool_batch(Path(current)):
+            return True
+        dirs[:] = [name for name in dirs if not os.path.islink(os.path.join(current, name))]
+    return False
 
 
 def find_batches(root: Path) -> list[Path]:
@@ -145,7 +169,13 @@ def prune(
                 "day": day.isoformat() if day else None,
                 "bytes": folder_bytes(folder),
             }
-            if day is None:
+            if not _written_here(folder):
+                entry.update(
+                    action="keep", reason="a copy or a folder this tool did not write here; left to its owner"
+                )
+            elif _holds_another_batch(folder):
+                entry.update(action="keep", reason="holds another batch inside; left as it is")
+            elif day is None:
                 entry.update(action="keep", reason="no readable date")
             elif day >= keep_from:
                 entry["action"] = "keep"

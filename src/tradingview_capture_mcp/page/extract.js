@@ -136,11 +136,14 @@ function lastValid(data, column) {
 // Graphics kinds the export reads, plus script statistics that are not drawings.
 const READ_GRAPHICS = new Set(['dwgtablecells', 'dwgtables', 'dwglabels', 'dwglines', 'dwgboxes', 'performance']);
 
-// Items in a primitives collection, whichever of the two layouts it uses; an unknown non-empty layout counts as one
-// so that it is reported rather than taken for empty.
+// Items in a primitives collection, whichever of the two layouts it uses. Anything that cannot be read the usual way
+// (not a Map, an unknown inner layout, a read that throws) counts as present, so it is reported rather than taken for
+// empty; the live chart's empty collections are empty Maps and count 0.
 function itemCount(collection) {
-  let count = 0;
+  if (!collection) return 0;
   try {
+    if (typeof collection.values !== 'function') return Object.keys(collection).length > 0 ? 1 : 0;
+    let count = 0;
     for (const outer of collection.values()) {
       const inner = outer && typeof outer.get === 'function' ? outer.get(false) || outer : outer;
       const byId = inner && inner._primitivesDataById;
@@ -148,10 +151,10 @@ function itemCount(collection) {
       else if (inner && typeof inner.size === 'number') count += inner.size;
       else if (inner) count += 1;
     }
+    return count;
   } catch (e) {
-    return 0;
+    return 1;
   }
-  return count;
 }
 
 // What a study holds that the export leaves out, so a caller never takes a missing part for an empty one.
@@ -174,7 +177,15 @@ const studies = ordered.map((source, studyIndex) => {
   const meta = source.metaInfo();
   const nodes = propertyNodes(source);
   const resolve = colorResolver(meta, nodes);
-  const css = (value) => resolve(value) || null;
+  // Colours of tables, labels and lines: a CSS string passes through, a number is resolved; one the palette cannot
+  // name is written as null like no colour, so it is counted to tell the two apart.
+  let unresolvedGraphicColors = 0;
+  const css = (value) => {
+    if (typeof value === 'string') return value || null;
+    const color = resolve(value);
+    if (color === undefined) unresolvedGraphicColors += 1;
+    return color || null;
+  };
   const tables = new Map();
   const cellColors = new Map();
   for (const cell of primitives(source, 'dwgtablecells', 'tableCells')) {
@@ -278,6 +289,7 @@ const studies = ordered.map((source, studyIndex) => {
     format: plain(meta.format || null),
     tables: Array.from(tables, ([id, rows]) => ({ id, position: positions.get(id) || null, rows, cellColors: cellColors.get(id) })),
     labels, lines, boxes, lastValues, plots, colors, fills, bands, notExported: notExportedOf(source, meta),
+    unresolvedGraphicColors,
   };
 });
 

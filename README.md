@@ -125,7 +125,7 @@ uv run tradingview-capture read --output-dir ~/tradingview-captures/2026-10-14 \
 - `fills[]`：两条曲线或两条水平线之间的填色（`between`），逐根 K 的颜色在 `colors` 里按 `target` 找。
 - `bands[]`：水平线的名字、数值、颜色、是否显示。
 - `visible`、`showLabelsOnPriceScale`、`format`：指标是否显示、是否在价格轴上标值、数值格式（`volume` 时 83424 显示成 83.42K）。
-- `tables[]` 的 `position` 与 `cellColors`（逐格文字色和底色），标签的 `yloc`、`textAlign` 与 `colorCss` / `textColorCss`，线的 `colorCss`。
+- `tables[]` 的 `position` 与 `cellColors`（逐格文字色和底色），标签的 `yloc`、`textAlign` 与 `colorCss` / `textColorCss`，线的 `colorCss`。这些颜色查不到时也写 `null`，所以另记一个数：`unresolvedGraphicColors`，不为 0 时 `null` 不一定是"没颜色"。
 - `notExported`：工具没能导出的曲线类型和图元种类。不为空就是数据有缺口，不能当作"图上没有"。
 
 ## 只保留当天的批次
@@ -137,7 +137,7 @@ uv run tradingview-capture prune              # 只列出：今天的保留，�
 uv run tradingview-capture prune --apply      # 把今天以前的批次移到废纸篓
 ```
 
-- 只动 `output_root` 之下由本工具建的批次目录（有本工具写的 `batch.json`），不跟随符号链接，不碰别的文件。
+- 只动本工具在原处写下的批次：目录里有本工具的 `batch.json`，且批次自己的 `job.json` 记的就是这个目录。复制出来的副本（`job.json` 记的是原目录）、里面还套着别的批次的目录都不动，不跟随符号链接，不碰别的文件。新批次也不能建在另一个批次里面（`INVALID_ARGUMENT`）。
 - "今天"按本机时区；一个批次最后一次开工、完成或续跑在哪天，就算哪天的。`--keep-days 2` 连昨天一起保留。
 - 只移到废纸篓，从不永久删除；需要时可以从废纸篓放回。空间要等用户清空废纸篓才会释放，代理不要替用户清空。
 - 采集进行中时 `--apply` 会报 `BATCH_LOCKED`，等批次结束再来。

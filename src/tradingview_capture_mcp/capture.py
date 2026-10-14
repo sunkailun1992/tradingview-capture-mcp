@@ -216,6 +216,7 @@ def run_capture(
             attempt = _next_attempt(out, previous)
             started_at = previous.get("startedAt") or stamp()
         else:
+            _refuse_inside_a_batch(config.output_root, out)
             make_dir_new(out)
             ensure_dir(out / "raw")
             ensure_dir(out / "attempts")
@@ -359,6 +360,20 @@ def run_capture(
             "desktopVersionChanged": changed,
             "error": error,
         }
+
+
+def _refuse_inside_a_batch(root: Path, out: Path) -> None:
+    """A batch inside another one would be moved with it when the outer one is pruned."""
+    real_root = root.resolve()
+    for folder in out.parents:
+        if folder == real_root or real_root not in folder.parents:
+            break
+        if (folder / "batch.json").is_file():
+            raise CaptureError(
+                INVALID_ARGUMENT,
+                "output_dir must not be inside another batch; choose a folder next to it",
+                {"batch": str(folder)},
+            )
 
 
 def _record_success(

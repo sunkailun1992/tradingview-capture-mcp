@@ -302,6 +302,15 @@ def test_retry_with_nothing_left_to_do(config):
     assert err.value.code == "NOT_FOUND"
 
 
+def test_refuses_a_new_batch_inside_another_batch(config):
+    capture(config, make_request(config))
+    inner = make_request(config, output_dir=str(config.output_root / "batch" / "inner"))
+    with pytest.raises(CaptureError) as err:
+        capture(config, inner)
+    assert err.value.code == "INVALID_ARGUMENT"
+    assert not (config.output_root / "batch" / "inner").exists()
+
+
 def test_refuses_an_existing_output_dir_and_a_held_lock(config):
     (config.output_root / "batch").mkdir()
     with pytest.raises(CaptureError) as err:

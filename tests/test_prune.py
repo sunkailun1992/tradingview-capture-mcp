@@ -30,8 +30,10 @@ def make(root, relative, *, started, finished=None, updated=None, tool="tradingv
     write_json_new(out / "batch.json", {"tool": {"name": tool}, "startedAt": started})
     if finished:
         write_json_new(out / "capture-manifest.json", {"tool": {"name": tool}, "finishedAt": finished})
-    if updated:
-        write_json_new(out / "job.json", {"state": "finished", "updatedAt": updated})
+    # Every batch's own progress file names the folder it was written to.
+    write_json_new(
+        out / "job.json", {"state": "finished", "outputDir": str(out), "updatedAt": updated or started}
+    )
     if size:
         (out / "raw").mkdir()
         (out / "raw" / "image.png").write_bytes(b"x" * size)
@@ -106,8 +108,44 @@ def test_a_batch_without_a_readable_date_is_kept(config):
     out = config.output_root / "odd"
     out.mkdir()
     write_json_new(out / "batch.json", {"tool": {"name": "tradingview-capture-mcp"}})
+    write_json_new(out / "job.json", {"outputDir": str(out)})
     [entry] = prune.prune(config, now=NOW)["batches"]
     assert (entry["action"], entry["day"], entry["reason"]) == ("keep", None, "no readable date")
+
+
+def test_a_copy_of_a_batch_is_left_to_whoever_made_it(config):
+    # A caller's own copy (cp -R) still names the original folder in its job.json.
+    original = make(config.output_root, "live/2026-10-11/capture", started=at(11))
+    shutil.copytree(original, config.output_root / "archive" / "copy")
+    report = prune.prune(config, now=NOW)
+    entries = {b["path"]: b for b in report["batches"]}
+    assert entries["live/2026-10-11/capture"]["action"] == "wouldTrash"
+    assert entries["archive/copy"]["action"] == "keep"
+    assert "copy" in entries["archive/copy"]["reason"]
+
+
+def test_a_folder_holding_another_batch_is_kept(config):
+    make(config.output_root, "live/2026-10-11", started=at(11))
+    make(config.output_root, "live/2026-10-11/rerun", started=at(14))
+    [entry] = prune.prune(config, now=NOW)["batches"]
+    assert (entry["path"], entry["action"]) == ("live/2026-10-11", "keep")
+    assert "another batch" in entry["reason"]
+
+
+def test_a_trash_command_that_hangs_or_fails_to_start_is_a_trash_failure(monkeypatch, tmp_path):
+    folder = tmp_path / "old"
+    folder.mkdir()
+    monkeypatch.setattr(prune, "TRASH_COMMAND", tmp_path / "trash")
+    (tmp_path / "trash").write_text("")
+    for error in (prune.subprocess.TimeoutExpired(["trash"], 300), OSError("cannot start")):
+
+        def broken(argv, error=error, **kwargs):
+            raise error
+
+        monkeypatch.setattr(prune.subprocess, "run", broken)
+        with pytest.raises(CaptureError) as err:
+            prune.move_to_trash(folder)
+        assert err.value.code == "TRASH_FAILED"
 
 
 def test_symlinks_are_never_followed(config, tmp_path):

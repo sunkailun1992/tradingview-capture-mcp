@@ -25,7 +25,7 @@ Seven rules: the DevTools port listens on loopback only and only while capturing
 - 输出文件 0600、`O_CREAT | O_EXCL`，目录 0700；例外只有 `job.json` 与续跑时的 `capture-manifest.json`，用临时文件加原子 `rename` 替换。
 - 所有写入路径必须在本机配置的输出根目录之下，父目录经 `resolve(strict=True)` 解析，拒绝符号链接逃逸。
 - 本机配置文件不得可被组或其他人写。
-- 清理（`prune.py`）只处理输出根目录之下、带本工具 `batch.json` 的批次目录：遍历不跟随符号链接，用固定参数列表调用 `/usr/bin/trash` 移到废纸篓，不经 shell，不永久删除；执行时持有批次锁，采集进行中不动任何目录。
+- 清理（`prune.py`）只处理输出根目录之下、本工具在原处写下的批次：有本工具的 `batch.json`，且批次自己的 `job.json` 记的就是这个目录（`os.path.samefile`）；副本和里面还套着别的批次的目录不动。遍历不跟随符号链接，用固定参数列表调用 `/usr/bin/trash` 移到废纸篓，不经 shell，不永久删除；命令超时或起不来记为 `TRASH_FAILED`，接着处理下一个；执行时持有批次锁，采集进行中不动任何目录。新批次不能建在另一个批次里面。
 
 ## 5. 网络
 
