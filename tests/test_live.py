@@ -11,6 +11,7 @@ from tradingview_capture_mcp.capture import CaptureRequest, run_capture
 from tradingview_capture_mcp.config import load_config
 from tradingview_capture_mcp.driver import RealDesktop
 from tradingview_capture_mcp.store import read_json, safe_name
+from tradingview_capture_mcp.validation import same_symbol
 
 pytestmark = pytest.mark.live
 
@@ -40,6 +41,6 @@ def test_capture_one_symbol_end_to_end():
     assert summary["totals"]["succeeded"] == 1, summary
     folder = out / "raw" / safe_name(symbol)
     data = read_json(folder / "data.json")
-    assert data["identity"]["symbol"] == symbol
+    assert same_symbol(data["identity"]["symbol"], symbol)  # the chart may show a delayed-feed name
     assert any(study["tables"] for study in data["studies"])
     assert (folder / "chart.csv").read_text(encoding="utf-8").startswith("time,open,high,low,close")
