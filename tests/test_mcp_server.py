@@ -5,6 +5,7 @@ import pytest
 from helpers import make_batch, write_config
 from mcp.server.mcpserver.exceptions import ToolError
 
+from tradingview_capture_mcp import jobs
 from tradingview_capture_mcp.mcp_server import app
 
 SYMBOL = "BINANCE:AAAUSDT.P"
@@ -104,3 +105,33 @@ def test_capture_start_offers_no_viewport_override():
     tools = {tool.name: tool for tool in asyncio.run(app.list_tools())}
     parameters = set(tools["capture_start"].input_schema["properties"])
     assert not {name for name in parameters if name.startswith("viewport")}
+
+
+def test_capture_start_passes_history_from_to_the_job(root, monkeypatch):
+    seen = []
+    monkeypatch.setattr(jobs, "start", lambda config, request: seen.append(request) or {"jobId": "j"})
+    arguments = {"layout": "Layout01", "symbols": [SYMBOL], "output_dir": str(root / "x"), "timeframe": "60"}
+    call("capture_start", {**arguments, "history_from": "2019-01-02"})
+    call("capture_start", arguments)
+    assert [request.history_from for request in seen] == ["2019-01-02", None]
+
+
+def test_a_bad_history_date_is_refused_before_anything_starts(root):
+    with pytest.raises(ToolError) as err:
+        call(
+            "capture_start",
+            {
+                "layout": "Layout01",
+                "symbols": [SYMBOL],
+                "output_dir": str(root / "x"),
+                "history_from": "2019/01/02",
+            },
+        )
+    assert "INVALID_ARGUMENT" in str(err.value)
+    assert not (root / "x").exists()
+
+
+def test_instructions_explain_history_from():
+    text = app.instructions
+    for hint in ("history_from", "endOfData", "reached", "firstBarTime"):
+        assert hint in text

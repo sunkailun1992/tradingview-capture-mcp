@@ -28,8 +28,15 @@ def write_config(tmp_path: Path, output_root: Path, **extra) -> Path:
     return path
 
 
-def make_batch(out: Path, symbol: str, *, csv_text: str = DEFAULT_CSV, png: bytes | None = None) -> Path:
-    """A finished one-symbol batch shaped like the capture output."""
+def make_batch(
+    out: Path,
+    symbol: str,
+    *,
+    csv_text: str = DEFAULT_CSV,
+    png: bytes | None = None,
+    capture_extra: dict | None = None,
+) -> Path:
+    """A finished one-symbol batch shaped like the capture output; capture_extra adds keys to capture.json."""
     ensure_dir(out)
     ensure_dir(out / "raw")
     folder = out / "raw" / safe_name(symbol)
@@ -84,6 +91,7 @@ def make_batch(out: Path, symbol: str, *, csv_text: str = DEFAULT_CSV, png: byte
             "desktop": {"version": "3.4.1"},
             "times": {"finishedAt": {"iso": "2026-10-14T02:00:00.000+08:00", "unix": 1791914400.0}},
             "files": {},
+            **(capture_extra or {}),
         },
     )
     write_json_new(

@@ -11,6 +11,8 @@ from tradingview_capture_mcp.errors import CaptureError
 from tradingview_capture_mcp.store import BatchLock, read_json, safe_name, sha256_bytes, write_json_new
 
 SYMBOLS = ("BINANCE:AAAUSDT.P", "BINANCE:BBBUSDT.P", "NYMEX:CL1!")
+# 00:00 UTC on this date is 0; the fake chart starts with 101 bars from 1000 to 2000, ten seconds apart.
+HISTORY_FROM = "1970-01-01"
 
 
 @pytest.fixture
@@ -392,6 +394,8 @@ def test_a_batch_without_any_capture_leaves_no_success_record(config):
         {"timeframe": "4H"},
         {"ready_timeout_sec": 1.0},
         {"required_studies": ("",)},
+        {"history_from": "2019/01/02"},
+        {"history_from": "2019-02-30"},
     ],
 )
 def test_invalid_requests_are_rejected(config, changes):
@@ -401,7 +405,121 @@ def test_invalid_requests_are_rejected(config, changes):
 
 
 def test_requests_round_trip_through_json(config):
-    request = make_request(config)
-    assert CaptureRequest.from_dict(json.loads(json.dumps(request.to_dict()))) == request
+    for request in (make_request(config), make_request(config, history_from="2019-01-02")):
+        assert CaptureRequest.from_dict(json.loads(json.dumps(request.to_dict()))) == request
     with pytest.raises(CaptureError):
         CaptureRequest.from_dict({"layout": "Layout01"})
+
+
+def test_a_request_without_history_from_reads_and_writes_as_before(config):
+    request = make_request(config)
+    assert "history_from" not in request.to_dict()  # batch.json and job requests keep their old shape
+    assert make_request(config, history_from="2019-01-02").to_dict()["history_from"] == "2019-01-02"
+    assert CaptureRequest.from_dict(request.to_dict()).history_from is None
+
+
+def history_of(config, code):
+    return read_json(config.output_root / "batch" / "raw" / safe_name(code) / "capture.json")["history"]
+
+
+def test_history_from_loads_older_bars_before_the_chart_is_read(config):
+    summary, chart, _ = capture(config, make_request(config, history_from=HISTORY_FROM))
+    assert summary["totals"]["succeeded"] == 3, summary
+    history = history_of(config, SYMBOLS[0])
+    # 1000 seconds to go at ten seconds a bar, plus 10%: one request for 110 bars reaches -100.
+    assert {k: v for k, v in history.items() if k != "waitedSec"} == {
+        "from": HISTORY_FROM,
+        "targetTime": 0,
+        "reached": True,
+        "endOfData": None,
+        "firstBarTime": -100,
+        "barsCount": 211,
+        "barsBefore": 101,
+        "requests": 1,
+    }
+    assert history["waitedSec"] > 0
+    out = config.output_root / "batch"
+    manifest = read_json(out / "capture-manifest.json")
+    assert manifest["historyFrom"] == HISTORY_FROM
+    assert [entry["history"] for entry in manifest["symbols"]] == [history_of(config, c) for c in SYMBOLS]
+    assert read_json(out / "batch.json")["request"]["history_from"] == HISTORY_FROM
+    assert chart.symbol == "SSE_DLY:000001"
+
+
+def test_history_stops_where_tradingview_has_no_older_bars(config):
+    request = make_request(config, symbols=SYMBOLS[:1], history_from=HISTORY_FROM)
+    summary, _, _ = capture(config, request, FakeChart(history_floor=500))
+    assert summary["state"] == "finished", summary
+    history = history_of(config, SYMBOLS[0])
+    assert (history["reached"], history["endOfData"], history["firstBarTime"], history["barsCount"]) == (
+        False,
+        "limit",
+        500,
+        151,
+    )
+
+
+def test_the_studies_are_waited_for_again_after_the_history_loads(config):
+    chart = FakeChart()
+    capture(config, make_request(config, symbols=SYMBOLS[:1], history_from=HISTORY_FROM), chart)
+    assert chart.extracted_settled == [True]
+    scripts = [script for script, _ in chart.calls]
+    assert "ready" in scripts[scripts.index("history") : scripts.index("extract")]
+
+
+def test_history_that_never_loads_fails_that_symbol_alone(config):
+    chart = FakeChart(history_stuck={SYMBOLS[1]})
+    summary, _, _ = capture(config, make_request(config, history_from=HISTORY_FROM), chart)
+    assert [(f["symbol"], f["code"]) for f in summary["failures"]] == [(SYMBOLS[1], "NOT_READY_TIMEOUT")]
+    assert summary["totals"]["succeeded"] == 2
+    entry = next(
+        s
+        for s in read_json(config.output_root / "batch" / "capture-manifest.json")["symbols"]
+        if s["symbol"] == SYMBOLS[1]
+    )
+    assert entry["error"]["detail"]["reason"] == "history"
+
+
+def test_studies_that_never_finish_on_the_longer_history_fail_with_reason_history(config):
+    request = make_request(config, symbols=SYMBOLS[:1], history_from=HISTORY_FROM)
+    summary, _, _ = capture(config, request, FakeChart(history_breaks_studies=True))
+    assert [(f["symbol"], f["code"]) for f in summary["failures"]] == [(SYMBOLS[0], "NOT_READY_TIMEOUT")]
+    manifest = read_json(config.output_root / "batch" / "capture-manifest.json")
+    detail = manifest["symbols"][0]["error"]["detail"]
+    assert (detail["reason"], detail["studyReason"]) == ("history", "status:Alpha")
+
+
+def test_a_history_batch_stops_when_the_chart_cannot_load_history(config):
+    broken = json.loads(json.dumps(OK_DIAGNOSE))
+    next(c for c in broken["checks"] if c["name"] == "mainSeriesHistory")["detail"] = ["requestMoreData"]
+    summary, _, _ = capture(
+        config, make_request(config, history_from=HISTORY_FROM), FakeChart(diagnose=broken)
+    )
+    assert (summary["state"], summary["error"]["code"]) == ("stopped", "TV_INTERNALS_CHANGED")
+    assert summary["error"]["detail"]["failedChecks"] == ["mainSeriesHistory.methods"]
+    # Without history_from the same chart captures as before.
+    other = make_request(config, output_dir=str(config.output_root / "plain"))
+    assert capture(config, other, FakeChart(diagnose=broken))[0]["state"] == "finished"
+
+
+def test_without_history_from_nothing_about_history_is_asked_or_written(config):
+    summary, chart, _ = capture(config, make_request(config))
+    assert summary["totals"]["succeeded"] == 3
+    assert "history" not in {script for script, _ in chart.calls}
+    out = config.output_root / "batch"
+    assert "history_from" not in read_json(out / "batch.json")["request"]
+    manifest = read_json(out / "capture-manifest.json")
+    assert "historyFrom" not in manifest
+    assert all("history" not in entry for entry in manifest["symbols"])
+    for code in SYMBOLS:
+        assert "history" not in read_json(out / "raw" / safe_name(code) / "capture.json")
+
+
+def test_a_retry_loads_history_for_the_symbols_it_runs(config):
+    chart = FakeChart(unknown={SYMBOLS[1]})
+    capture(config, make_request(config, history_from=HISTORY_FROM), chart)
+    chart.unknown.clear()
+    chart.calls.clear()
+    summary, _, _ = capture(config, make_request(config, retry_failed=True, history_from=HISTORY_FROM), chart)
+    assert summary["totals"]["succeeded"] == 3, summary
+    assert history_of(config, SYMBOLS[1])["reached"] is True

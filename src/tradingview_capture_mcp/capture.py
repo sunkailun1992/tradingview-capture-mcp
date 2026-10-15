@@ -22,6 +22,7 @@ from .errors import (
     INTERRUPTED,
     INVALID_ARGUMENT,
     NOT_FOUND,
+    NOT_READY_TIMEOUT,
     OUTPUT_EXISTS,
     STUDY_HIDDEN,
     STUDY_MISSING,
@@ -29,6 +30,7 @@ from .errors import (
     TV_INTERNALS_CHANGED,
     CaptureError,
 )
+from .history import HistoryLoad, HistoryState, load_history
 from .images import png_size
 from .readiness import ReadySnapshot, judge, normalize_resolution, wait_until_ready
 from .store import (
@@ -46,7 +48,7 @@ from .store import (
     write_json_new,
     write_new,
 )
-from .validation import SYMBOL_RE, TIMEFRAME_RE, check_layout, same_symbol
+from .validation import SYMBOL_RE, TIMEFRAME_RE, check_layout, history_from_time, same_symbol
 
 CAPTURE_METHOD = "CDP_DESKTOP"
 PNG_SOURCE = "TradingViewApi.takeClientScreenshot"
@@ -64,9 +66,11 @@ class CaptureRequest:
     required_studies: tuple[str, ...] = ()
     ready_timeout_sec: float = 60.0
     retry_failed: bool = False
+    # YYYY-MM-DD: load the chart's history back to 00:00 UTC on this date before each symbol is read.
+    history_from: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        raw = {
             "layout": self.layout,
             "symbols": list(self.symbols),
             "timeframe": self.timeframe,
@@ -75,6 +79,9 @@ class CaptureRequest:
             "ready_timeout_sec": self.ready_timeout_sec,
             "retry_failed": self.retry_failed,
         }
+        if self.history_from is not None:  # without it, batch.json keeps the shape it had before 0.3.0
+            raw["history_from"] = self.history_from
+        return raw
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> CaptureRequest:
@@ -87,6 +94,7 @@ class CaptureRequest:
                 required_studies=tuple(str(s) for s in raw.get("required_studies") or ()),
                 ready_timeout_sec=float(raw.get("ready_timeout_sec", 60.0)),
                 retry_failed=bool(raw.get("retry_failed", False)),
+                history_from=None if raw.get("history_from") is None else str(raw["history_from"]),
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise CaptureError(INVALID_ARGUMENT, f"invalid capture request: {exc}", {}) from exc
@@ -114,6 +122,8 @@ def validate_request(request: CaptureRequest) -> None:
         bad("ready_timeout_sec must be between 5 and 600")
     if len(request.required_studies) > 32 or any(not s or len(s) > 128 for s in request.required_studies):
         bad("required_studies must be up to 32 non-empty names")
+    if request.history_from is not None:
+        history_from_time(request.history_from)
 
 
 class Progress:
@@ -247,7 +257,9 @@ def run_capture(
             previous_version = previous_desktop_version(config.output_root, exclude=out)
             changed = previous_version is not None and previous_version != info.version
             progress.update(desktopVersionChanged=changed)
-            issues, _ = wait_for_internals(driver, sleep=sleep, clock=clock)
+            issues, _ = wait_for_internals(
+                driver, sleep=sleep, clock=clock, history=request.history_from is not None
+            )
             if issues:
                 raise CaptureError(
                     TV_INTERNALS_CHANGED, "TradingView's internals changed", {"failedChecks": issues}
@@ -317,6 +329,7 @@ def run_capture(
             "attempts": attempt,
             "layout": request.layout,
             "timeframe": request.timeframe,
+            **({"historyFrom": request.history_from} if request.history_from is not None else {}),
             "desktop": {
                 "version": info.version if info else None,
                 "browser": info.browser if info else None,
@@ -528,6 +541,11 @@ def capture_symbol(
         clock=clock,
     )
     ready_at = stamp()
+    loaded = (
+        _load_history(driver, request, code, timeframe, sleep=sleep, clock=clock)
+        if request.history_from is not None
+        else None
+    )
     extracted = driver.run("extract", timeout=120.0) or {}
     extracted_at = stamp()
     shot = driver.run("screenshot", timeout=60.0) or {}
@@ -540,6 +558,7 @@ def capture_symbol(
     identity = extracted.get("identity") or {}
     studies = extracted.get("studies") or []
     series = extracted.get("series") or {}
+    history = _history_record(request, *loaded, identity) if loaded is not None else None
     names = [str(s.get("name") or "") for s in studies]
     missing = [want for want in request.required_studies if not any(want in name for name in names)]
     # A study switched off with its eye icon still computes, so its data would come without its picture.
@@ -657,6 +676,7 @@ def capture_symbol(
             "symbol": code,
             "resolvedSymbol": identity.get("symbol"),
             "readiness": evidence,
+            **({"history": history} if history is not None else {}),
             "layout": request.layout,
             "timeframe": request.timeframe,
             "attempt": attempt,
@@ -682,7 +702,77 @@ def capture_symbol(
         "status": "ok",
         "resolvedSymbol": identity.get("symbol"),
         "readiness": evidence,
+        **({"history": history} if history is not None else {}),
         "attempt": attempt,
         "captureSha256": capture_sha,
         "finishedAt": finished_at,
+    }
+
+
+def _load_history(
+    driver: ChartDriver,
+    request: CaptureRequest,
+    code: str,
+    timeframe: str,
+    *,
+    sleep: Callable[[float], None],
+    clock: Callable[[], float],
+) -> tuple[HistoryLoad, float]:
+    """Load older bars back to request.history_from, then wait for the studies to finish on them.
+
+    Runs after the switch is ready, so the symbol is settled and the studies are this symbol's; the load and
+    the studies' new computation share one ready_timeout_sec. Returns the load and the seconds it all took."""
+    target = history_from_time(str(request.history_from))
+    start = clock()
+    loaded = load_history(
+        lambda count: HistoryState.from_page(driver.run("history", {"request": count})),
+        symbol=code,
+        target=target,
+        timeout=request.ready_timeout_sec,
+        sleep=sleep,
+        clock=clock,
+    )
+
+    def read() -> ReadySnapshot:
+        return ReadySnapshot.from_page(driver.run("ready"))
+
+    # The studies compute again over the longer history; their output must not be read half done.
+    try:
+        wait_until_ready(
+            read,
+            target=code,
+            timeframe=timeframe,
+            before_switch=None,
+            timeout=max(request.ready_timeout_sec - (clock() - start), 1.0),
+            sleep=sleep,
+            clock=clock,
+        )
+    except CaptureError as exc:
+        if exc.code != NOT_READY_TIMEOUT:
+            raise
+        # One reason for the whole history step; studyReason says which study condition never held.
+        raise CaptureError(
+            NOT_READY_TIMEOUT,
+            f"the studies did not finish on the loaded history within {request.ready_timeout_sec:g}s",
+            {**exc.detail, "reason": "history", "studyReason": exc.detail.get("reason")},
+        ) from exc
+    return loaded, clock() - start
+
+
+def _history_record(
+    request: CaptureRequest, loaded: HistoryLoad, waited: float, identity: dict[str, Any]
+) -> dict[str, Any]:
+    """The history block of capture.json and the manifest, counted on the extracted bars (chart.csv)."""
+    target = history_from_time(str(request.history_from))
+    first_bar = identity.get("firstBarTime")
+    return {
+        "from": request.history_from,
+        "targetTime": target,
+        "reached": first_bar is not None and first_bar <= target,
+        "endOfData": loaded.after.end_of_data,
+        "firstBarTime": first_bar,
+        "barsCount": identity.get("barsCount"),
+        "barsBefore": loaded.before.bars,
+        "requests": loaded.requests,
+        "waitedSec": round(waited, 3),
     }

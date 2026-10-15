@@ -47,6 +47,16 @@ def test_each_missing_piece_is_named(mutate, expected):
     assert expected in problems(report)
 
 
+def test_history_methods_count_only_when_history_is_asked_for():
+    report = copy.deepcopy(OK_DIAGNOSE)
+    assert problems(report, history=True) == []
+    check(report, "mainSeriesHistory").update(detail=["requestMoreData"])
+    assert problems(report) == []
+    assert problems(report, history=True) == ["mainSeriesHistory.methods"]
+    report["checks"].remove(check(report, "mainSeriesHistory"))
+    assert problems(report, history=True) == ["mainSeriesHistory"]
+
+
 def test_doctor_checks_the_layout_before_starting_anything(tmp_path):
     config = Config(app_path=tmp_path / "TradingView.app", debug_port=9333, output_root=tmp_path)
     with pytest.raises(CaptureError) as err:

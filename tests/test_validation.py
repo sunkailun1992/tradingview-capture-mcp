@@ -1,7 +1,13 @@
 import pytest
 
 from tradingview_capture_mcp.errors import CaptureError
-from tradingview_capture_mcp.validation import SYMBOL_RE, TIMEFRAME_RE, check_layout, same_symbol
+from tradingview_capture_mcp.validation import (
+    SYMBOL_RE,
+    TIMEFRAME_RE,
+    check_layout,
+    history_from_time,
+    same_symbol,
+)
 
 
 @pytest.mark.parametrize("code", ["BINANCE:BTCUSDT.P", "NYMEX:CL1!", "SSE_DLY:000001", "OANDA:XAUUSD"])
@@ -44,3 +50,32 @@ def test_check_layout():
 )
 def test_same_symbol_accepts_delayed_feeds(actual, requested, expected):
     assert same_symbol(actual, requested) is expected
+
+
+@pytest.mark.parametrize(
+    "value, expected",
+    [("2019-01-02", 1546387200), ("1970-01-01", 0), ("1800-01-01", -5364662400), ("2024-02-29", 1709164800)],
+)
+def test_history_from_is_midnight_utc_of_the_date(value, expected):
+    assert history_from_time(value) == expected
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "2019-1-2",
+        "2019/01/02",
+        "20190102",
+        "2019-13-01",
+        "2019-02-30",
+        "1799-12-31",
+        "",
+        " 2019-01-02",
+        "2019-01-02T00:00",
+        20190102,
+    ],
+)
+def test_rejects_other_history_dates(value):
+    with pytest.raises(CaptureError) as err:
+        history_from_time(value)
+    assert err.value.code == "INVALID_ARGUMENT"

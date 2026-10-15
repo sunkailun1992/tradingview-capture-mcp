@@ -44,6 +44,7 @@ TradingView 桌面版是 Electron 应用，页面里的图表有完整的数据�
 | `output_dir` | 本批的输出目录，必须是绝对路径；父目录已存在且在本机配置的输出根目录之下；目录本身必须还不存在（续跑同一批除外），由工具创建 |
 | `required_studies` | 自检时要求必须存在的指标名（按子串匹配），可不传 |
 | `ready_timeout_sec` | 单个品种最长等待就绪的秒数，默认 60 |
+| `history_from` | 可选，`YYYY-MM-DD`（2026-10-15 起，0.3.0）。每个品种读取前先把历史载入到这一天 UTC 00:00，或 TradingView 给得到的最早一根，见 4.2 第 3 步；不传时一切照旧 |
 
 MCP 工具名和参数名用 snake_case，输出文件里的 JSON 键用 camelCase。
 
@@ -55,8 +56,9 @@ MCP 工具名和参数名用 snake_case，输出文件里的 JSON 键用 camelCa
 |---|---|
 | `desktop.py` | 启动、发现和退出桌面版：带 `--remote-debugging-port` 启动，核对端口只监听 127.0.0.1，记下自己启动的 PID；退出只针对这个 PID，先正常退出，超时再按 PID 结束，从不按进程名结束进程。桌面版已经在普通模式下运行时报错停止，不关用户的程序 |
 | `cdp.py` | 最小 CDP 客户端：列出页面目标、按布局 ID 选页、`Runtime.evaluate`；HTTP 与 WebSocket 都不走系统代理 |
-| `page/*.js` | 页面内的只读脚本，随版本固定：`alive`、`ready`、`switch`、`extract`（身份、指标、表格 / 标签 / 线 / 框、绘图、曲线，一次调用读完）、`screenshot`、`diagnose`。调用方不能传入任意脚本 |
-| `capture.py` | 批次流程：开工自检、逐品种切换并判断就绪、提取、写文件、收尾恢复 |
+| `page/*.js` | 页面内的脚本，随版本固定：`alive`、`ready`、`switch`（切换品种和周期）、`history`（传了 `history_from` 时要更早的 K 线）、`extract`（身份、指标、表格 / 标签 / 线 / 框、绘图、曲线，一次调用读完）、`screenshot`、`diagnose`；除 `switch` 和 `history` 外都只读。调用方不能传入任意脚本 |
+| `capture.py` | 批次流程：开工自检、逐品种切换并判断就绪、（载入历史）、提取、写文件、收尾恢复 |
+| `history.py` | 载入历史：何时要、要多少更早的 K 线，何时算载入完（纯函数加轮询，2026-10-15 加入） |
 | `store.py` | 写文件：0600、只新建（`O_EXCL`）、写完算 SHA256；批次锁；manifest |
 | `jobs.py` | 后台任务：采集在独立子进程里跑，进度写进批次目录的 `job.json`，调用方断开也不影响采集 |
 | `cli.py` | 命令行：`capture`、`status`、`read`、`crop`、`doctor`，以及 `mcp`（启动 stdio MCP 服务） |
@@ -68,7 +70,7 @@ MCP 工具名和参数名用 snake_case，输出文件里的 JSON 键用 camelCa
 
 1. 校验参数，拿批次锁，建 `output_dir`，写 `batch.json`（开工时间、参数、工具版本）。`symbols` 原样存档并算 SHA256。
 2. 启动桌面版，等 CDP 就绪，核对监听地址，选中 `layout` 对应的页面。
-3. 等内部接口：页面刚打开时图表接口已经能应答，内部模型却还没建好，所以 `diagnose` 的各项检查（图表接口、截图接口、主图 K 线、指标数量、每个指标的表格 / 标签 / 线 / 框集合、绘图端点）最多轮询 30 秒。30 秒后仍有不过的，整批停止，返回 `TV_INTERNALS_CHANGED` 并附上失效的检查项。
+3. 等内部接口：页面刚打开时图表接口已经能应答，内部模型却还没建好，所以 `diagnose` 的各项检查（图表接口、截图接口、主图 K 线、指标数量、每个指标的表格 / 标签 / 线 / 框集合、绘图端点；传了 `history_from` 时还有主图序列载入历史用的方法 `mainSeriesHistory`）最多轮询 30 秒。30 秒后仍有不过的，整批停止，返回 `TV_INTERNALS_CHANGED` 并附上失效的检查项。
 4. 等开工时的图表稳定：布局还在加载时做的切换，会被布局自己的加载覆盖回去；加载过程中品种还可能被改名成延迟行情的名字（例如 `SSE:000001` 变成 `SSE_DLY:000001`，2026-10-14 实测）。所以先跟着图表当前显示的品种等，直到相邻两次读取的结构一致（规则同 4.2 第 2 步），最多等 `ready_timeout_sec`。这时的品种和周期就是收尾要恢复的原值，记在 manifest 的 `startup` 里。等不到也不停批次：照样往下采，`startup.settled` 记 `false` 并写明原因。
 5. 不改视口：桌面版里 TradingView 的截图尺寸跟着窗口大小走，CDP 的视口模拟对它不起作用（2026-10-14 整批演练实测），实际尺寸记在 `capture.json`。
 6. 自检：在第一个走到提取这一步的品种上完整检查一遍：身份可读、有指标、`required_studies` 都在、曲线序列行数大于 0、截图是有效的 PNG。任何一项不过，整批停止，返回错误码 `TV_INTERNALS_CHANGED` 并附上失效点，不留半成品；只有必需指标不在、其余都正常时报 `STUDY_MISSING`，那是布局问题，不是内部结构变了。品种在提取之前就失败（例如就绪超时、代码无效）时只记这个品种失败，自检顺延到下一个品种。
@@ -85,7 +87,8 @@ MCP 工具名和参数名用 snake_case，输出文件里的 JSON 键用 camelCa
    - 各指标的输出指纹和切换前的品种不同（切换前已经是目标品种时不比）。切换后 10 秒仍有指标和上一个品种完全相同时也放行，但把它记进 `unchangedAfterSwitch`，由调用方核对。
 
    这几条是为了防止读到上一个品种残留的表格。
-3. **提取**（一次页面调用）：
+3. **载入历史**（只在传了 `history_from` 时）：每秒跑一次 `history`。序列空闲、第一根还晚于目标时间、TradingView 也没说不再给更早的时，向主图序列要更早的 K 线（`requestMoreData`，和往左拖动图表时 TradingView 自己发的请求相同）：按已载入 K 线的平均间隔估算还差多少根，多要一成，每次最多 5000 根。第一根不晚于目标时间、或序列完成标记里带了 `data_completed`（不再给更早的，见过 `limit` 与 `end`）之后，连续两次读到的第一根和标记都相同就算载入完（开盘时末尾新长出的 K 线不影响这个判断）；然后按第 2 步的条件再等一次（不比较切换前的指纹），让指标在更长的历史上重新算完。载入和重算共用一个 `ready_timeout_sec`，超时记 `NOT_READY_TIMEOUT`（`reason` 为 `history`，卡在重算时 `studyReason` 是第 2 步里没满足的那个条件）。TradingView 拒绝请求、或回来的答复不带 K 线也不带标记时，照样每秒再要，直到超时，不会无限等下去。视图和缩放都不动，截图仍是平常那一屏，收尾也不用恢复。等待放在 Python 端轮询：窗口在后台时页面里的定时器会被推迟十几秒（2026-10-15 实测）。做法的比较见附录 B。
+4. **提取**（一次页面调用）：
    - 身份：代码、交易所、描述、周期、主图最后一根 K 线的时间和 OHLC；
    - 指标清单：名称、ID、输入参数；
    - 表格：每个指标每张表 `[行][列]` 的原文，emoji、空格、`NaN` 都原样保留；
@@ -95,8 +98,8 @@ MCP 工具名和参数名用 snake_case，输出文件里的 JSON 键用 camelCa
    - 曲线清单：每个指标原生导出会带的每条曲线，含标题、类型、在 `chart.csv` 里的列号和样式（形状、位置、颜色、文字、大小、是否隐藏）；
    - 曲线：图表已加载的每根 K 线（不只是可见范围），每个指标里原生导出会带的每条曲线（跳过 `alertcondition`、`data` 和各类配色曲线），列名、列序和数字写法与原生 CSV 一致；
    - 截图：TradingView 渲染的 PNG。
-4. **写入** `raw/<代码安全名>/`：`image.png`、`chart.csv`、`data.json`、`capture.json`，格式见第 5 节。
-5. **单个品种失败**：记下错误码和原因，接着采下一个。
+5. **写入** `raw/<代码安全名>/`：`image.png`、`chart.csv`、`data.json`、`capture.json`，格式见第 5 节。
+6. **单个品种失败**：记下错误码和原因，接着采下一个。
 
 ### 4.3 收尾
 
@@ -123,6 +126,7 @@ MCP 工具名和参数名用 snake_case，输出文件里的 JSON 键用 camelCa
 ```
 
 - `capture.json` 里 `captureMethod` 固定为 `CDP_DESKTOP`，并写明 PNG 来自页面渲染接口、CSV 由曲线数据生成，不是菜单下载的文件；另有 `tool`（名称、版本）、`desktop`（桌面版版本）、`resolvedSymbol`（图表实际显示的代码，可能是延迟行情名）、`readiness`（就绪证据摘要：`waitedSec`、`reswitches`、`unchangedAfterSwitch`、`digestMovingAtRead`）。manifest 里每个成功品种的条目也带 `resolvedSymbol` 和同一份摘要，调用方不用逐个打开文件就能看出哪些品种需要重点核对。
+- 传了 `history_from` 时，`capture.json` 和 manifest 里每个成功品种的条目另有 `history`：`from`、`targetTime`（UTC 00:00 的 UNIX 秒）、`reached`（第一根不晚于 `targetTime`）、`endOfData`（TradingView 的 `data_completed`，没有为 `null`）、`firstBarTime` 与 `barsCount`（按导出的 K 线算，与 `chart.csv` 一致）、`barsBefore`、`requests`、`waitedSec`；`batch.json` 的参数里有 `history_from`，manifest 顶层有 `historyFrom`。不传时这些键都不出现，输出与 0.2.0 相同。
 - `data.json` 的顶层是 `identity`、`studies[]`（每项含 `tables`、`labels`、`lines`、`boxes`，以及每条曲线的最后值）、`drawings[]`、`readiness`（读取次数 `polls`、等待秒数 `waitedSec`、最后一根 K 线时间 `lastBarTime`、重新切换次数 `reswitches`、`unchangedAfterSwitch`、`digestMovingAtRead`，以及就绪那一刻各指标的 ID、名称、状态、最后一根时间和输出指纹）。逐 K 的曲线值只放在 `chart.csv`，不在 `data.json` 里重复。
 - 文件一律 0600，目录 0700；写入用 `O_CREAT | O_EXCL`。
 - 时间同时写两种：带时区的 ISO 8601（本机时区）和 UNIX 秒。
@@ -132,7 +136,7 @@ MCP 工具名和参数名用 snake_case，输出文件里的 JSON 键用 camelCa
 | MCP 工具 | 命令行 | 作用 |
 |---|---|---|
 | `capture_start` | `tradingview-capture capture` | 按第 2 节的参数开始一批，立即返回任务 ID |
-| `capture_retry` | `tradingview-capture capture --retry-failed` | 只重跑已有批次里失败和未完成的品种，立即返回任务 ID |
+| `capture_retry` | `tradingview-capture capture --retry-failed` | 只重跑已有批次里失败和未完成的品种，沿用批次的参数（含 `history_from`），立即返回任务 ID |
 | `capture_status` | `tradingview-capture status` | 进度：完成数 / 总数、当前品种、失败原因、版本是否变化 |
 | `batch_summary` | `tradingview-capture status --summary` | 一批的总览：每个品种的状态和文件 SHA256 |
 | `symbol_data` | `tradingview-capture read` | 读某个品种的 `data.json`，可以只取 `identity` / `tables` / `labels` / `lines` / `drawings`；要曲线值时从 `chart.csv` 取最近 N 根。默认返回的 `capture` 块带采集时间、方式、`resolvedSymbol`、就绪证据摘要和文件 SHA256 |
@@ -181,7 +185,7 @@ MCP 工具名和参数名用 snake_case，输出文件里的 JSON 键用 camelCa
 
 - 调试端口只在采集期间开着，只监听 127.0.0.1；采集结束就退出本工具启动的桌面版。端口开着的时候，本机任何进程都能连上并控制这个 TradingView 会话。这是已知风险，靠尽量缩短开启时间来控制。
 - 不提供任意脚本执行，`diagnose` 用的也是固定脚本。
-- 页面里唯一会改变状态的动作是切换品种和周期，这会被布局自动保存，所以收尾时恢复原值。不改指标参数，不移动或新建绘图，不建警报，不打开 Pine 编辑器，不点任何菜单。
+- 页面里会改变状态的动作只有两种：切换品种和周期，这会被布局自动保存，所以收尾时恢复原值；传了 `history_from` 时向数据源要更早的 K 线，只多载入历史，不移动视图、不改缩放和任何会被保存的属性，换品种就丢掉。不改指标参数，不移动或新建绘图，不建警报，不打开 Pine 编辑器，不点任何菜单。
 - 只退出自己启动的 PID，从不按进程名结束进程。
 - 除桌面版自身的连接外不访问网络；不读取也不保存 TradingView 账号凭据；不上传任何数据。
 - 日志里不记表格原文和截图，也不记调用方传入的业务内容；`diagnose` 只报结构。
@@ -231,6 +235,7 @@ MCP 工具名和参数名用 snake_case，输出文件里的 JSON 键用 camelCa
 - PNG 的尺寸等于桌面版窗口大小乘以像素比；要前后一致，需要保持窗口大小不变。
 - 生成的 CSV 和原生下载的 CSV 是否逐值一致，要在 M3 用原生文件比对确认。
 - 首版只支持 macOS 和 TradingView 桌面版。
+- 能载入多少历史由 TradingView 决定：账户和周期有上限时它只给到某一天（`endOfData` 为 `limit`），工具如实记录起点，不会也不能绕过。
 
 ## 附录 A：2026-10-14 可行性验证
 
@@ -249,3 +254,20 @@ MCP 工具名和参数名用 snake_case，输出文件里的 JSON 键用 camelCa
 | 绘图 | 接口可用；验证的两个品种上没有能读到端点的斐波（同日在画了斐波的品种上补验：各档价位与图上标签一致） |
 
 验证结束时切回了原来的品种，正常退出桌面版，调试端口随之关闭。
+
+## 附录 B：2026-10-15 载入历史的做法比较
+
+验证环境：TradingView 桌面版 3.4.1（Chromium 146），带只监听本机的调试端口启动，在 1 小时图上比较；对照是同一账户当天在网页版用"跳转到日期 → 下载图表数据（UNIX 时间戳）"导出的文件。探查脚本只放在本机，不进仓库。
+
+| 做法 | 结果 |
+|---|---|
+| 图表接口的 `setVisibleRange()` | 桌面版里直接抛 "Not implemented"，`chartWidget.setVisibleTimeRange()` 也一样。不可用 |
+| "跳转到日期"（`ChartModel.gotoTime(ms)`，Alt+G 对话框走的路径） | 能载入：按估算一次次要更早的 K 线，到目标日期或数据尽头为止，返回 `{timestamp, eod}`；每个品种 14–22 秒。但视图滚到那一天、缩放也被改（`zoomToBarsRange`），截图前得把两者恢复。没有采用 |
+| 按日期范围载入（`setTimeFrame` / `gotoTimeRange` → 主图序列的 `loadDataTo`） | 从源码看是用一个时间范围重新请求整个序列，再把视图缩放到这个范围，并留下 `appliedTimeFrame` 状态。改动最大，没有采用，也没有在活体上试 |
+| 主图序列的 `requestMoreData(n)`（往左拖动图表、"跳转到日期"内部发的同一个请求） | 只在序列前面多载入 n 根更早的 K 线，视图、缩放、右侧留白和逻辑范围都不变；一次请求 1–6 秒回来，5000 根一次给全。没有更早的数据可给时，序列完成标记里带 `data_completed`，之后再要也不会多。采用 |
+
+两种能用的做法载入的结果相同，也与网页版导出相同：港股一只的 1 小时图两种做法都是 11426 根、第一根 2019-01-02 09:30（香港时间）、`limit`，与网页版导出的根数和第一根一样；韩股一只第一根 2020-01-02 10:00（首尔时间）、`limit`；BINANCE:BTCUSDT 的 1 小时图两种做法都停在 2025-01-01、`limit`，而这个交易对 2017 年就有数据，所以 `limit` 是 TradingView 对这个账户、这个周期的上限，不是数据的起点。日线上一个 2019 年 9 月才开始的永续合约停在上线那天，标记是 `end`。
+
+用 0.3.0 的命令行（`--history-from 2019-01-02`，1 小时）采了一只韩股和一只港股，与网页版导出逐根比对：第一根相同，time / open / high / low / close 在重叠段（去掉两边各自最后一根还没收完的 K 线）分别比了 11636 和 11425 根，0 处差异；表头 96 列相同。指标列里另有 3–4 列有差异，都是依赖其他周期或会重新计算的列，与 0.1.0 时对原生导出的观察一致。截图仍是平常那一屏。
+
+另：页面里的 `setTimeout` 在桌面版窗口位于后台时会被推迟（一次 200 毫秒的等待实际过了约 14 秒），所以 `history.js` 每次只做一次读取或一次请求，等待放在 Python 端每秒轮询。

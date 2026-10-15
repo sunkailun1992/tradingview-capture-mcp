@@ -1,3 +1,4 @@
+import dataclasses
 import os
 import stat
 import time
@@ -106,6 +107,15 @@ def test_retry_request_rebuilds_the_original_request(config):
     rebuilt = jobs.retry_request(config, str(out))
     assert rebuilt.retry_failed
     assert (rebuilt.symbols, rebuilt.output_dir) == (("BINANCE:AAAUSDT.P",), str(out))
+    assert rebuilt.history_from is None  # batches written before history_from existed
+
+
+def test_a_retry_keeps_the_batch_history_date(config):
+    out = config.output_root / "batch"
+    out.mkdir()
+    original = dataclasses.replace(request(config), history_from="2019-01-02")
+    write_json_new(out / "batch.json", {"request": original.to_dict()})
+    assert jobs.retry_request(config, str(out)).history_from == "2019-01-02"
 
 
 def test_retry_needs_a_batch_with_something_left(config, stub_python):

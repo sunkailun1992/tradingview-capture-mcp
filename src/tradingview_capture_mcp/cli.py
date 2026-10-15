@@ -39,6 +39,11 @@ def build_parser() -> argparse.ArgumentParser:
     cap.add_argument("--timeframe", default="1D")
     cap.add_argument("--required-study", action="append", default=[])
     cap.add_argument("--ready-timeout", type=float, default=60.0)
+    cap.add_argument(
+        "--history-from",
+        metavar="YYYY-MM-DD",
+        help="load each chart's history back to 00:00 UTC on this date before it is read",
+    )
     cap.add_argument("--retry-failed", action="store_true", help="retry the failed symbols of --output-dir")
     cap.add_argument("--foreground", action="store_true")
     job = sub.add_parser("run-job", help=argparse.SUPPRESS)
@@ -87,6 +92,7 @@ def _capture(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             output_dir=args.output_dir,
             required_studies=tuple(args.required_study),
             ready_timeout_sec=args.ready_timeout,
+            history_from=args.history_from,
         )
     if not args.foreground:
         return jobs.start(config, request), 0

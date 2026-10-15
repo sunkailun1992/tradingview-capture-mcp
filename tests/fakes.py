@@ -38,9 +38,12 @@ OK_DIAGNOSE = {
             ],
         },
         {"name": "shapes", "ok": True, "detail": [{"name": "fib_retracement", "points": "function"}]},
+        {"name": "mainSeriesHistory", "ok": True, "detail": []},
     ],
 }
 CSV = "time,open,high,low,close,Quarter\n1000,1,2,0.5,1.5,10.5\n2000,1.5,2.5,1,2,11.25"
+# The history script's view of a freshly switched chart: 101 bars, ten seconds apart, from 1000 to 2000.
+HISTORY_FIRST, HISTORY_BARS, HISTORY_SPACING = 1000, 101, 10
 
 
 class FakeChart:
@@ -65,6 +68,9 @@ class FakeChart:
         interrupt_on=None,
         start_alias=None,
         hidden_studies=(),
+        history_floor=None,
+        history_stuck=(),
+        history_breaks_studies=False,
     ):
         self.symbol = start_symbol
         self.previous = start_symbol
@@ -90,6 +96,16 @@ class FakeChart:
         # (alias, reads): the restored chart first shows `alias` without bars, then resolves to start_symbol
         self.start_alias = list(start_alias) if start_alias else None
         self.hidden_studies = set(hidden_studies)  # studies whose eye icon is off on the layout
+        self.history_floor = history_floor  # TradingView has no bars before this time ("limit")
+        self.history_stuck = set(history_stuck)  # symbols whose requests for older bars are never answered
+        self.history_breaks_studies = history_breaks_studies  # the studies never finish on the longer history
+        self.extracted_settled = []  # whether the studies had finished when each extract ran
+        self._new_series()
+
+    def _new_series(self):
+        self.history_first, self.history_bars = HISTORY_FIRST, HISTORY_BARS
+        self.history_end = None
+        self.history_pending = None
 
     def run(self, script, args=None, *, timeout=60.0):
         self.calls.append((script, dict(args or {})))
@@ -155,6 +171,7 @@ class FakeChart:
             )
         self.resolution = args.get("timeframe") or self.resolution
         after = {"symbol": self.symbol, "resolution": self.resolution}
+        self._new_series()
         if self.symbol in self.revert_once:
             self.revert_once.discard(self.symbol)
             self.symbol = self.previous
@@ -166,10 +183,50 @@ class FakeChart:
             "timedOut": False,
         }
 
+    def _history(self, args):
+        if self.history_pending is not None and self.symbol not in self.history_stuck:
+            count = self.history_pending
+            oldest = self.history_first - count * HISTORY_SPACING
+            if self.history_floor is not None and oldest <= self.history_floor:
+                count = (self.history_first - self.history_floor) // HISTORY_SPACING
+                oldest, self.history_end = self.history_floor, "limit"
+            self.history_first, self.history_bars, self.history_pending = (
+                oldest,
+                self.history_bars + count,
+                None,
+            )
+            self.polls = 0  # the studies compute again over the longer history
+            if self.history_breaks_studies:
+                self.never_ready.add(self.symbol)
+        loading = self.history_pending is not None
+        state = {
+            "symbol": self.symbol,
+            "resolution": self.resolution,
+            "bars": self.history_bars,
+            "firstBarTime": self.history_first,
+            "lastBarTime": 2000,
+            "loading": loading,
+            "canRequest": not loading,
+            "endOfData": self.history_end,
+            "requested": 0,
+        }
+        request = args.get("request") or 0
+        if request and not loading and self.history_end is None:
+            self.history_pending = request
+            state["requested"] = request
+        return state
+
     def _extract(self, args):
         names = [name for name in self.studies if (self.symbol, name) != self.missing_study]
+        self.extracted_settled.append(self.polls > self.settle_polls)
         return {
-            "identity": {"symbol": self.symbol, "resolution": self.resolution, "lastBar": {"time": 2000}},
+            "identity": {
+                "symbol": self.symbol,
+                "resolution": self.resolution,
+                "barsCount": self.history_bars,
+                "firstBarTime": self.history_first,
+                "lastBar": {"time": 2000},
+            },
             "studies": [
                 {
                     "id": f"s{i}",

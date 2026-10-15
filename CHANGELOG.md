@@ -2,6 +2,25 @@
 
 本文件记录每个版本的变化，以及验证过的 TradingView 桌面版版本。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号用[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## 0.3.0 — 2026-10-15
+
+只新增一个可选参数，以及只在用到它时才出现的字段；不传 `history_from` 时，行为和输出与 0.2.0 逐字节相同（工具版本号除外）。
+
+### 新增
+
+- `history_from`（MCP `capture_start` 的参数，命令行 `--history-from`，写成 `YYYY-MM-DD`）：每个品种就绪后，先把历史载入到那一天 UTC 00:00，或 TradingView 给得到的最早一根，再等指标在更长的历史上算完，然后照常导出；`chart.csv` 包含全部载入的 K 线。做法是向主图序列要更早的 K 线（`requestMoreData`，与往左拖动图表时 TradingView 自己发的请求相同）：按已载入 K 线的平均间隔估算还差多少，多要一成，每次最多 5000 根。视图和缩放不动，截图仍是平常那一屏。新的页面脚本 `history.js` 是 `switch.js` 之外唯一会改变图表的脚本，规则见 AGENTS.md。
+- 用到时，`capture.json` 和 manifest 里每个成功品种的条目多一个 `history`：`from`、`targetTime`、`reached`、`endOfData`、`firstBarTime`、`barsCount`、`barsBefore`、`requests`、`waitedSec`；`symbol_data` 的 `capture` 块同样带上。manifest 顶层多 `historyFrom`，`batch.json` 的参数里多 `history_from`，`capture_retry` 沿用它。
+- 载入和重算没在 `ready_timeout_sec` 内完成时，只这个品种记 `NOT_READY_TIMEOUT`（`detail.reason` 为 `history`，卡在重算时另有 `studyReason`）；载入途中图表离开了这个品种记 `SYMBOL_NOT_FOUND`。
+- `diagnose` 多一项 `mainSeriesHistory`（主图序列载入历史要用的方法）。只有传了 `history_from` 的批次和 `doctor` 把它算作问题，别的批次不受影响。
+- 活体测试多一项：设了 `TRADINGVIEW_CAPTURE_LIVE_HISTORY_FROM` 时，再采一次并载入日线历史。
+
+### 已核对
+
+- TradingView 桌面版 3.4.1：比较了图表接口的 `setVisibleRange`（桌面版未实现）、"跳转到日期"（能载入，但会移动视图、改缩放）、按日期范围载入（重新请求整个序列，没有采用）和 `requestMoreData`（采用），记录在设计文档附录 B。
+- 1 小时图、`history_from` 2019-01-02，采一只韩股和一只港股：分别 11638 根（第一根 2020-01-02 10:00 首尔时间）和 11426 根（第一根 2019-01-02 09:30 香港时间），`endOfData` 都是 `limit`，每只载入加重算约 15 秒。与同一账户在网页版"下载图表数据"的导出逐根比对：第一根相同，time / open / high / low / close 在重叠段 0 处差异。
+- 新的活体测试载入日线历史，停在品种上线那天，`endOfData` 为 `end`。
+- 不传 `history_from` 时，用 0.2.0 和 0.3.0 跑同一组假图表批次：页面调用顺序相同，36 个输出文件逐字节相同（工具版本号除外）。
+
 ## 0.2.0 — 2026-10-14
 
 只新增字段，原有字段和 `chart.csv` 的列都不变。
