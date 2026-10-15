@@ -41,6 +41,9 @@ check('mainSeriesBars', () => {
   const b = model.mainSeries().bars();
   return { size: b.size(), firstIndex: typeof b.firstIndex, lastIndex: typeof b.lastIndex, valueAt: typeof b.valueAt };
 });
+// Loading history from a date (history.js) needs these; a capture without history_from does not.
+check('mainSeriesHistory', () => ['requestMoreData', 'requestMoreDataAvailable', 'endOfDataType', 'isLoading']
+  .filter((name) => typeof model.mainSeries()[name] !== 'function'));
 check('dataSources', () => model.model().dataSources().length);
 check('panes', () => model.model().panes().length);
 check('studyCount', () => {

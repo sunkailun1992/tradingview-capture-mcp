@@ -75,6 +75,8 @@ def symbol_data(
             "files": capture.get("files"),
         },
     }
+    if "history" in capture:  # captured with history_from
+        result["capture"]["history"] = capture["history"]
     for part in ("identity", "drawings", "readiness"):
         if part in wanted:
             result[part] = data.get(part)

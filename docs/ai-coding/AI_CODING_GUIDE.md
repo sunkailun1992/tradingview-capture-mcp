@@ -3,7 +3,7 @@
 ## English summary
 
 - Data flows one way: caller arguments → `capture.run_capture` → `driver.ChartDriver.run(<page script>)` → files in the batch directory → `results` readers → CLI and MCP.
-- Page scripts are the only code that touches TradingView's internals. Add one by writing the `.js` file, listing it in `page.SCRIPTS`, and testing it with the fake chart model in `tests/js/`.
+- Page scripts are the only code that touches TradingView's internals. Add one by writing the `.js` file, listing it in `page.SCRIPTS`, and testing it with the fake chart model in `tests/js/`. Only `switch.js` (symbol and resolution) and `history.js` (older bars, asked for only with `history_from`) change the chart.
 - MCP tools and CLI commands are thin wrappers over the same functions; add both together.
 - Versions follow SemVer; changing output files or MCP parameters is a breaking change.
 
@@ -14,15 +14,15 @@ cli.py / mcp_server.py        两个入口，参数校验之后调用同一套�
         │
 jobs.py                       后台进程（posix_spawn + setsid）、进度、续跑
         │
-capture.py                    批次流程：自检 → 逐品种切换、等待、提取、截图、写文件 → manifest
-   │        │         │
-readiness.py  images.py  diagnostics.py
+capture.py                    批次流程：自检 → 逐品种切换、等待、（载入历史）、提取、截图、写文件 → manifest
+      │            │          │             │
+readiness.py  history.py  images.py  diagnostics.py
         │
 driver.py                     ChartDriver / DesktopControl 接缝；CdpDriver、RealDesktop
    │            │
 desktop.py     cdp.py         启停桌面版；DevTools 客户端
         │
-page.py + page/*.js           固定页面脚本：alive、ready、switch、extract、screenshot、diagnose
+page.py + page/*.js           固定页面脚本：alive、ready、switch、history、extract、screenshot、diagnose
         │
 store.py / config.py / errors.py / validation.py   写文件、配置、错误码、输入格式
 results.py                    读批次、读品种数据、裁图
@@ -33,7 +33,7 @@ prune.py                      只保留当天的批次：列出更早的批次�
 
 1. 调用方传入布局 ID、TradingView 代码、周期、输出目录、必需指标。
 2. `capture.run_capture` 拿批次锁，建目录，启动桌面版，跑 `diagnose` 自检。
-3. 每个品种：`ready` 记下切换前的指纹 → `switch` → 轮询 `ready` 直到 `readiness.judge` 判定就绪 → `extract` 一次读完 → `screenshot`。
+3. 每个品种：`ready` 记下切换前的指纹 → `switch` → 轮询 `ready` 直到 `readiness.judge` 判定就绪 →（传了 `history_from` 时）轮询 `history` 要更早的 K 线，直到 `history.load_history` 判定载入完，再等 `ready` 判定指标重新算完 → `extract` 一次读完 → `screenshot`。
 4. 文件先写进 `raw/.<名>.partial-<次>/`，全部成功后整目录改名为 `raw/<名>/`；失败的半成品移到 `attempts/<次>/`，从不删除。
 5. 收尾恢复原品种和周期，退出桌面版，写 `capture-manifest.json`。
 
@@ -43,7 +43,7 @@ prune.py                      只保留当天的批次：列出更早的批次�
 2. 写或改 `src/tradingview_capture_mcp/page/<名>.js`：只读，参数只从 `ARGS` 读，返回可 JSON 化的值。
 3. 新脚本要加进 `page.SCRIPTS`；不依赖 `common.js` 的脚本还要加进 `_STANDALONE`。
 4. 跑 `node --test "tests/js/*.test.mjs"` 与 `uv run pytest -q`。
-5. 能改变图表状态的只有 `switch.js`；任何新脚本都不得改变状态。
+5. 能改变图表状态的只有 `switch.js`（品种和周期，收尾恢复）和 `history.js`（只多载入更早的 K 线，不动视图和缩放，换品种即丢弃）；任何新脚本都不得改变状态。等待一律在 Python 里轮询，不在页面里用定时器：桌面版窗口在后台时，页面的定时器可能被推迟十几秒。
 
 ## 新增 MCP 工具或命令行子命令
 

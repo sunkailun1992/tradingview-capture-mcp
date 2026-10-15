@@ -1,6 +1,6 @@
 [project]
 name = "tradingview-capture-mcp"
-version = "0.2.0"
+version = "0.3.0"
 description = "Capture TradingView Desktop charts for AI agents over MCP: rendered PNG, export-compatible CSV, and indicator tables, labels, lines and drawings."
 readme = "README.md"
 license = "Apache-2.0"

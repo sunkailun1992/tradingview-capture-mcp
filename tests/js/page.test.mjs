@@ -236,6 +236,34 @@ test('switch clears its timeout once the chart answers', async () => {
   assert.equal(pending.size, 0);
 });
 
+test('history reads the loaded range and asks for older bars only while the series is idle', async () => {
+  const history = { requests: [] };
+  const window = fixture({ history });
+  assert.deepEqual(await run('history', { request: 0 }, window), {
+    symbol: 'BINANCE:BTCUSDT.P', resolution: '1D', bars: 2, firstBarTime: 1000, lastBarTime: 2000,
+    loading: false, canRequest: true, endOfData: null, requested: 0,
+  });
+  const asked = await run('history', { request: 500 }, window);
+  assert.equal(asked.requested, 500);
+  // The answer is still on its way: no second request.
+  const busy = await run('history', { request: 500 }, window);
+  assert.deepEqual([busy.loading, busy.canRequest, busy.requested], [true, false, 0]);
+  assert.deepEqual(history.requests, [500]);
+});
+
+test('history never asks past the end of the data and reports a request the series refused', async () => {
+  const ended = { end: 'limit', requests: [] };
+  const done = await run('history', { request: 500 }, fixture({ history: ended }));
+  assert.deepEqual([done.endOfData, done.requested, ended.requests], ['limit', 0, []]);
+  const refusing = { refuse: true, requests: [] };
+  assert.equal((await run('history', { request: 500 }, fixture({ history: refusing }))).requested, 0);
+  assert.equal((await run('history', { request: -3 }, fixture())).requested, 0);
+});
+
+test('history names the series methods it misses', async () => {
+  await assert.rejects(run('history', { request: 0 }, fixture({ history: null })), /TV_INTERNALS_CHANGED: .*requestMoreData/);
+});
+
 test('screenshot returns the PNG payload without the data URL prefix', async () => {
   assert.deepEqual(await run('screenshot', {}, fixture()), { width: 2, height: 1, base64: 'iVBORw0KGgo=' });
 });
@@ -257,6 +285,9 @@ test('alive and diagnose never throw', async () => {
   assert.deepEqual(assist.properties, ['styles', 'visible']);
   assert.deepEqual(report.checks.find((c) => c.name === 'studyCount').detail, { public: 3, matched: 3 });
   assert.deepEqual(report.checks.find((c) => c.name === 'shapes').detail, [{ name: 'fib_retracement', points: 'function' }]);
+  assert.deepEqual(report.checks.find((c) => c.name === 'mainSeriesHistory').detail, []);
+  const old = await run('diagnose', {}, fixture({ history: null }));
+  assert.deepEqual(old.checks.find((c) => c.name === 'mainSeriesHistory').detail, ['requestMoreData', 'requestMoreDataAvailable', 'endOfDataType', 'isLoading']);
 });
 
 test('diagnose calls primitives broken when they sit where the readers do not look', async () => {

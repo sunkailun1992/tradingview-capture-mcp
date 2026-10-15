@@ -62,7 +62,27 @@ export function makeStudy({ id, name, zorder, plots, rows, styles = {}, ohlcPlot
   };
 }
 
-export function makeTradingView({ symbol = 'BINANCE:BTCUSDT.P', resolution = '1D', bars, panes, shapes = [], onSetSymbol }) {
+// The main series' history methods as TradingView Desktop 3.4.1 has them (probed 2026-10-15): requestMoreData(n) asks the
+// server for n older bars, marks the series loading and holds further requests until the answer; endOfDataType() is the
+// data_completed flag of the last answer ('limit' once the server sends nothing older), null before that.
+// `history: null` builds a series without these methods.
+function makeHistory(history) {
+  if (history === null) return {};
+  const state = { loading: false, available: true, end: null, refuse: false, requests: [], ...history };
+  return {
+    isLoading: () => state.loading,
+    requestMoreDataAvailable: () => state.available,
+    endOfDataType: () => state.end,
+    requestMoreData: (count) => {
+      if (state.refuse || !state.available) return; // the live series returns quietly while it is not ready
+      state.requests.push(count);
+      state.loading = true;
+      state.available = false;
+    },
+  };
+}
+
+export function makeTradingView({ symbol = 'BINANCE:BTCUSDT.P', resolution = '1D', bars, panes, shapes = [], onSetSymbol, history = {} }) {
   const state = { symbol, resolution };
   const studies = panes.flat();
   const builtin = { id: () => 'builtin', zorder: () => 10000006, metaInfo: () => ({ description: 'Dividends', plots: [] }) };
@@ -85,8 +105,13 @@ export function makeTradingView({ symbol = 'BINANCE:BTCUSDT.P', resolution = '1D
       return { _source: { points: () => shape.points }, getProperties: () => shape.properties };
     },
   };
+  const series = {
+    bars: () => bars,
+    symbolInfo: () => ({ description: 'Bitcoin / TetherUS', exchange: 'Binance', pricescale: 100, minmov: 1 }),
+    ...makeHistory(history),
+  };
   const model = {
-    mainSeries: () => ({ bars: () => bars, symbolInfo: () => ({ description: 'Bitcoin / TetherUS', exchange: 'Binance', pricescale: 100, minmov: 1 }) }),
+    mainSeries: () => series,
     model: () => ({
       dataSources: () => [...studies].reverse().concat([builtin]),
       panes: () => panes.map((list) => ({ dataSources: () => list })),

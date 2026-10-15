@@ -7,7 +7,7 @@ from functools import cache
 from importlib import resources
 from typing import Any
 
-SCRIPTS = ("alive", "ready", "switch", "extract", "screenshot", "diagnose")
+SCRIPTS = ("alive", "ready", "switch", "history", "extract", "screenshot", "diagnose")
 _STANDALONE = {"alive", "diagnose"}
 
 

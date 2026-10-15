@@ -2,7 +2,7 @@
 
 ## English summary
 
-Seven rules: the DevTools port listens on loopback only and only while capturing; no caller-supplied scripts ever run in the page; only the process this tool started is ever stopped; outputs are owner-only and create-only; no network beyond the local DevTools connection; logs and diagnostics carry no chart contents; nothing private reaches the repository.
+Seven rules: the DevTools port listens on loopback only and only while capturing; no caller-supplied scripts ever run in the page, and only `switch.js` and `history.js` change the chart; only the process this tool started is ever stopped; outputs are owner-only and create-only; no network beyond the local DevTools connection; logs and diagnostics carry no chart contents; nothing private reaches the repository.
 
 ## 1. 调试端口
 
@@ -12,7 +12,7 @@ Seven rules: the DevTools port listens on loopback only and only while capturing
 ## 2. 页面脚本
 
 - 只运行 `page/` 下随版本固定的脚本；参数只以 `json.dumps` 生成的 JSON 字面量传入，绝不拼接进代码。
-- 除 `switch.js` 外的脚本都不得改变图表状态；`switch.js` 只切换品种和周期，收尾恢复。
+- 除 `switch.js` 和 `history.js` 外的脚本都不得改变图表状态。`switch.js` 只切换品种和周期，收尾恢复；`history.js` 只在调用方传了 `history_from` 时向数据源要更早的 K 线（主图序列的 `requestMoreData`），不移动视图、不改缩放和任何属性，换品种即丢弃，所以不需要恢复。
 
 ## 3. 进程
 

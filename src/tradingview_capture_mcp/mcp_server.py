@@ -39,6 +39,12 @@ INSTRUCTIONS = (
     "not export; a non-empty list is a gap in the data, not proof that nothing is drawn; "
     "unresolvedGraphicColors counts table, label and line colours it could not name, written as null). "
     "A required study hidden on the layout fails with STUDY_HIDDEN; ask the user to show it again. "
+    "history_from (YYYY-MM-DD) makes capture_start load each chart's older bars back to 00:00 UTC on that "
+    "date before the read, as scrolling left would, without moving the view; chart.csv then holds every "
+    "loaded bar. Each symbol's history block (batch_summary entry, symbol_data capture block) gives "
+    "firstBarTime, barsCount, reached (the first bar is at or before the date) and endOfData (TradingView's "
+    "flag, e.g. limit, when it sent nothing older: the data or the account's history ends there). Without "
+    "history_from nothing changes. "
     "Keep only the current day's captures: when the day's captures are done, or before the first capture "
     "of a new day, call output_prune to list the batches from before today, then call it again with "
     "apply=true. It moves those batch folders to the macOS Trash and never deletes anything for good; never "
@@ -64,7 +70,8 @@ def _coded[F: Callable[..., Any]](fn: F) -> F:
 
 @app.tool(
     description="Start capturing TradingView codes from one TradingView Desktop layout into output_dir. "
-    "Returns a job id at once."
+    "Returns a job id at once. history_from (YYYY-MM-DD, optional) first loads each chart's history back to "
+    "00:00 UTC on that date, or as far as TradingView goes."
 )
 @_coded
 def capture_start(
@@ -74,6 +81,7 @@ def capture_start(
     timeframe: str = "1D",
     required_studies: list[str] | None = None,
     ready_timeout_sec: float = 60.0,
+    history_from: str | None = None,
 ) -> dict[str, Any]:
     request = CaptureRequest(
         layout=layout,
@@ -82,11 +90,15 @@ def capture_start(
         output_dir=output_dir,
         required_studies=tuple(required_studies or ()),
         ready_timeout_sec=ready_timeout_sec,
+        history_from=history_from,
     )
     return jobs.start(load_config(), request)
 
 
-@app.tool(description="Retry the failed and pending symbols of an existing batch. Returns a job id at once.")
+@app.tool(
+    description="Retry the failed and pending symbols of an existing batch with the batch's own settings, "
+    "history_from included. Returns a job id at once."
+)
 @_coded
 def capture_retry(output_dir: str) -> dict[str, Any]:
     return jobs.retry(load_config(), output_dir)

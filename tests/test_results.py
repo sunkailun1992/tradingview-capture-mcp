@@ -57,6 +57,17 @@ def test_symbol_data_defaults(batch):
     assert data["capture"]["captureMethod"] == "CDP_DESKTOP"
     assert data["capture"]["resolvedSymbol"] == SYMBOL
     assert data["capture"]["readiness"]["unchangedAfterSwitch"] == ["Alpha"]
+    assert "history" not in data["capture"]  # only batches captured with history_from have it
+
+
+def test_symbol_data_shows_the_loaded_history(tmp_path):
+    root = tmp_path / "root"
+    root.mkdir()
+    config = Config(app_path=tmp_path / "TradingView.app", debug_port=9333, output_root=root.resolve())
+    history = {"from": "2019-01-02", "reached": False, "endOfData": "limit", "firstBarTime": 1546392600}
+    make_batch(config.output_root / "day", SYMBOL, capture_extra={"history": history})
+    data = results.symbol_data(config, str(config.output_root / "day"), SYMBOL)
+    assert data["capture"]["history"] == history
 
 
 def test_symbol_data_parts_and_series(batch):

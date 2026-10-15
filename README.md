@@ -11,6 +11,7 @@
 ## English summary
 
 - **What it does:** starts TradingView Desktop with a loopback-only DevTools port, switches one layout through the TradingView codes you pass in, and writes per symbol: the chart as TradingView renders it (`image.png`), a CSV with the same columns as TradingView's own "Export chart data" (`chart.csv`), and the indicators' tables, labels, lines, boxes and drawings (`data.json`), including per-bar colours, fills, horizontal levels, which plots draw on the main chart from another pane, and each plot's last valid value (what the price scale keeps showing after a line stops).
+- **Older history:** pass `history_from` (`YYYY-MM-DD`; CLI `--history-from`) and each chart first loads its older bars back to 00:00 UTC on that date, as scrolling left does, without moving the view. `chart.csv` then holds every loaded bar, and each symbol's `history` block says where the data starts (`firstBarTime`, `barsCount`), whether the date was reached (`reached`) and whether TradingView stopped sending older bars (`endOfData`). Without it nothing changes.
 - **What it does not do:** choose symbols, analyse anything, or upload anything. The caller decides what to capture and how to check and use the data.
 - **Requirements:** macOS, a logged-in TradingView Desktop that is fully quit before a capture (Cmd+Q; full screen or not makes no difference, the tool starts it with its own debugging port), Python 3.12+ and uv.
 - **Keep only today:** `output_prune` (CLI `prune`) lists the batches from before today and, with `apply`, moves them to the macOS Trash; it never deletes anything for good.
@@ -24,6 +25,7 @@
   - `data.json`：指标画出的表格（逐格原文与颜色）、标签、线、框、绘图端点与档位，每条曲线的样式、最后值和最后一个有效值，逐根 K 的颜色（曲线、填色、K 线、背景），填色带与水平线，以及工具没能导出的部分（`notExported`）；
   - `capture.json`：各步时间、文件 SHA256、工具与桌面版版本。
 - 切换后等图表真正就绪才读：指标算完、相邻两次读取的结构一致、输出和上一个品种不同。就绪证据（等了多久、是否重新切换、哪些指标读取时仍在跳动、哪些和上一个品种相同）写进 `data.json`，供调用方核对。
+- 要多年历史时（例如校准要的 1 小时 K 线从 2019 年起），传 `history_from`：每个品种就绪后先把历史载入到那一天（或 TradingView 给得到的最早一根），再照常读取，`chart.csv` 里就是全部载入的 K 线。不传时行为和输出与以前完全一样。
 - 采集在后台进程里跑，过程中不消耗代理的 token；代理只发起采集、读结果。
 - 布局里要求的指标缺了（`STUDY_MISSING`）或被隐藏了（`STUDY_HIDDEN`，图例上的眼睛被关掉）都会当场停下，不会产出缺一块的数据。
 - 只保留当天的批次：`output_prune` 列出今天以前的批次，加 `apply` 时把它们移到废纸篓，从不永久删除。
@@ -32,7 +34,7 @@
 
 - **不决定采什么**：品种清单、布局 ID、必需指标都由调用方在调用时传入，工具不保存任何业务配置。
 - **不分析、不上传**：数据怎么核对、怎么用、要不要提交到别处，都由调用方负责。工具没有任何上传或写外部服务的接口。
-- **不乱动图表**：页面里唯一的改动是切换品种和周期，收尾时恢复原值；不点菜单、不改指标参数、不动绘图、不建警报。
+- **不乱动图表**：页面里的改动只有两种：切换品种和周期，收尾时恢复原值；传了 `history_from` 时向 TradingView 要更早的 K 线，和往左拖动图表时它自己做的一样，只是多载入历史，不移动视图、不改缩放，换品种就丢掉。不点菜单、不改指标参数、不动绘图、不建警报。
 
 ## 要求
 
@@ -97,15 +99,40 @@ uv run tradingview-capture read --output-dir ~/tradingview-captures/2026-10-14 \
   --symbol BINANCE:BTCUSDT.P --part tables --series-last 5
 ```
 
-错误一律带固定的错误码，例如 `TV_ALREADY_RUNNING`（桌面版已开着）、`TV_INTERNALS_CHANGED`（桌面版升级后内部结构变了）、`STUDY_MISSING`（布局里没有要求的指标）、`STUDY_HIDDEN`（要求的指标在布局里被隐藏）、`NOT_READY_TIMEOUT`（某品种迟迟没加载完）、`TRASH_UNAVAILABLE`（系统没有 `/usr/bin/trash`，清理什么都没动）。
+错误一律带固定的错误码，例如 `TV_ALREADY_RUNNING`（桌面版已开着）、`TV_INTERNALS_CHANGED`（桌面版升级后内部结构变了）、`STUDY_MISSING`（布局里没有要求的指标）、`STUDY_HIDDEN`（要求的指标在布局里被隐藏）、`NOT_READY_TIMEOUT`（某品种迟迟没加载完，载入历史没完成时明细里 `reason` 为 `history`）、`TRASH_UNAVAILABLE`（系统没有 `/usr/bin/trash`，清理什么都没动）。
+
+### 载入历史（history_from）
+
+图表切到一个品种时只载入最近一段 K 线（1 小时图约 300 根）。要更长的历史时，`capture_start` 传 `history_from`（命令行 `--history-from`），写成 `YYYY-MM-DD`：
+
+```bash
+uv run tradingview-capture capture --foreground --layout <布局ID> --timeframe 60 \
+  --history-from 2019-01-02 --symbol BINANCE:BTCUSDT.P --output-dir ~/tradingview-captures/history-2026-10-15
+```
+
+- 日期按 UTC 当天 00:00 算（`chart.csv` 的时间也是 UTC 秒），1800-01-01 及以后。
+- 每个品种照常切换并就绪后，工具向 TradingView 要更早的 K 线，和往左拖动图表时它自己发的请求一样：每次最多 5000 根，按已载入 K 线的平均间隔估算到目标日期还差多少再多要一成，回来了再要，直到第一根不晚于目标日期，或 TradingView 表示不再给更早的。然后等各指标在更长的历史上重新算完，再导出。视图和缩放不动，截图仍是平常那一屏；换下一个品种时这些历史随之丢掉。
+- 载入和指标重算共用一个 `ready_timeout_sec`；没在时限内完成时只这个品种失败（`NOT_READY_TIMEOUT`，`detail.reason` 为 `history`，卡在指标重算时 `detail.studyReason` 写明哪个条件没满足）。`capture_retry` 沿用原批次的参数（同一个 `history_from` 和 `ready_timeout_sec`），能补上偶发的慢；每次都超时，就把失败的品种用更大的 `ready_timeout_sec` 另开一批。
+- `chart.csv` 包含全部载入的 K 线；有更早数据的品种，第一根可能比目标日期早一点（最多约最后一段差距的一成）。
+- 每个品种的 `capture.json` 和 manifest 条目里多一个 `history`，`symbol_data` 的 `capture` 块里也有：
+
+| 字段 | 含义 |
+|---|---|
+| `from` / `targetTime` | 调用方给的日期，和它在 UTC 00:00 的 UNIX 秒 |
+| `firstBarTime` / `barsCount` | 导出时第一根 K 线的时间和总根数，与 `chart.csv` 一致 |
+| `reached` | 第一根不晚于 `targetTime` |
+| `endOfData` | TradingView 不再给更早的 K 线时带的标记（它自己的 `data_completed`），没有就是 `null`。实测见过两种：`end`，数据本来就从这里开始（例如合约的上市日）；`limit`，TradingView 只给到这里，更早的可能存在，但这个账户、这个周期拿不到（2026-10-15 实测：韩国交易所股票的 1 小时图只给到 2020-01-02，香港交易所股票到 2019-01-02） |
+| `barsBefore` / `requests` / `waitedSec` | 载入前的根数、请求次数、载入加重算用的秒数 |
+
+`reached` 为 `false` 而 `endOfData` 有值，说明 TradingView 已经给出它能给的全部历史，`firstBarTime` 就是数据的起点；两者都没有时品种会失败，不会悄悄只导出一部分。不传 `history_from` 时以上都不出现，输出与 0.2.0 逐字节相同（工具版本号除外）。
 
 ## 输出目录
 
 ```text
 <output_dir>/
-├── batch.json              # 开工参数、品种清单与其 SHA256、工具版本
+├── batch.json              # 开工参数（传了才有 history_from）、品种清单与其 SHA256、工具版本
 ├── job.json                # 后台任务进度
-├── capture-manifest.json   # 每个品种的状态、文件 SHA256 与就绪证据摘要；桌面版版本是否变化
+├── capture-manifest.json   # 每个品种的状态、文件 SHA256、就绪证据摘要（和载入历史的 history）；桌面版版本是否变化
 ├── attempts/               # 每次尝试的记录（含续跑）
 └── raw/<代码安全名>/        # 例如 BINANCE_BTCUSDT.P
     ├── image.png

@@ -2,7 +2,7 @@
 
 ## English summary
 
-- Critical: page scripts, starting and stopping processes, how files are written, the DevTools port, the private-content scan. High: readiness, CSV column rules, MCP tools and output formats. Medium: readers, CLI parsing, docs that describe behaviour. Low: wording, comments.
+- Critical: page scripts, starting and stopping processes, how files are written, the DevTools port, the private-content scan. High: readiness, history loading, CSV column rules, MCP tools and output formats. Medium: readers, CLI parsing, docs that describe behaviour. Low: wording, comments.
 - Done means: a test that failed first and now passes, the full suite and both linters green, the private-content scan clean, docs and CHANGELOG updated, and for Critical or High changes that touch TradingView a live check on the maintainer's machine.
 - Live tests and anything that starts TradingView Desktop run only on the maintainer's machine; cloud sessions change code, run unit tests and CI only.
 
@@ -11,7 +11,7 @@
 | 等级 | 范围 | 额外要求 |
 |---|---|---|
 | 极高 | `page/*.js`、`desktop.py` 的启停、`store.py` 的写入方式、`prune.py` 移动目录的范围、调试端口、`scripts/check-private-content.sh` | 维护者审核；改页面脚本或启停逻辑时做一次活体自检 |
-| 高 | `readiness.py`、CSV 列规则（`common.js` 的 `exportedPlots` / `plotTitle`）、MCP 工具与参数、输出文件结构 | 补齐失败用例；改输出结构要升主版本号 |
+| 高 | `readiness.py`、`history.py`（载入历史何时要、要多少、何时算完）、CSV 列规则（`common.js` 的 `exportedPlots` / `plotTitle`）、MCP 工具与参数、输出文件结构 | 补齐失败用例；改输出结构要升主版本号 |
 | 中 | `results.py`、`jobs.py` 的状态读取、命令行解析、描述行为的文档 | 单元测试 |
 | 低 | 措辞、注释、不影响行为的整理 | 验证命令全过 |
 

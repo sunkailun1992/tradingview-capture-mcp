@@ -6,11 +6,12 @@
 
 - This repository is public. Never commit real layout IDs, TradingView usernames, private indicator names or table contents, real screenshots, local absolute paths, IP addresses or tokens. Test fixtures are made up.
 - The tool only exports chart data and screenshots. It never decides which symbols to capture and never uploads anything; callers do that.
-- Hard rules: no arbitrary page scripts; the only page action that changes state is switching symbol and resolution; stop only the process this tool started; files 0600 and create-only.
+- Hard rules: no arbitrary page scripts; the only page actions that change state are switching symbol and resolution (restored at the end) and, when a caller passes `history_from`, asking TradingView for older bars (`history.js`, which never moves the view or the zoom); stop only the process this tool started; files 0600 and create-only.
 - Verify with `uv run pytest -q`, `node --test "tests/js/*.test.mjs"`, `uv run ruff check`, `uv run ruff format --check` and `bash scripts/check-private-content.sh`.
 - `TV_ALREADY_RUNNING` means the user has TradingView Desktop open (full screen or not). The debugging port can only be opened at launch, so ask the user to quit it with Cmd+Q, never kill it, then call `capture_retry` on the same `output_dir`. See "常见情况" below.
 - Keep only the current day's batches: after the day's captures (or before a new day's first one) call `output_prune` without `apply`, then with `apply=true`. It moves this tool's older batch folders to the macOS Trash and never deletes for good; never empty the Trash for the user.
 - A required study hidden on the layout fails with `STUDY_HIDDEN`; `notExported` lists what the tool could not export, so an empty part of the data is never mistaken for nothing drawn.
+- `history_from` (YYYY-MM-DD) loads each chart's history back to 00:00 UTC on that date before the read. `reached: false` together with an `endOfData` flag means TradingView sent everything it gives (`limit`: this account or timeframe gets no older bars; `end`: the data starts there); a load that does not finish fails that symbol with `NOT_READY_TIMEOUT`, reason `history`. See "常见情况".
 - The maintainer and the maintainer's own Claude/Codex sessions may merge to `main` directly; everyone else opens a PR that the maintainer reviews. Squash only, never force-push.
 
 ## 项目定位
@@ -34,7 +35,7 @@
 ## 硬规则
 
 - 不执行调用方传入的任意脚本。页面脚本只有 `src/tradingview_capture_mcp/page/` 下随版本固定的几个，参数只以 JSON 字面量传入。
-- 页面里唯一会改变状态的动作是切换品种和周期；收尾必须恢复原值。不点菜单，不改指标参数，不动绘图，不建警报，不打开 Pine 编辑器。
+- 页面里会改变状态的动作只有两种：切换品种和周期（`switch.js`），收尾必须恢复原值；调用方传 `history_from` 时向 TradingView 要更早的 K 线（`history.js`，主图序列的 `requestMoreData`，与往左拖动图表时它自己发的请求相同），只多载入历史，不移动视图、不改缩放和任何属性，换品种就丢掉，所以不需要恢复。不点菜单，不改指标参数，不动绘图，不建警报，不打开 Pine 编辑器。
 - 调试端口只能监听 127.0.0.1 / [::1]，只在采集期间开着。
 - 只停止本工具启动的那个进程；禁止 `pkill`、`killall`，禁止按进程名结束进程；用户自己开着的桌面版一律不碰，报 `TV_ALREADY_RUNNING`。
 - 输出文件一律 0600、只新建（`O_EXCL`），目录 0700；例外只有 `job.json` 和续跑时的 `capture-manifest.json`，两者原子替换。
@@ -76,6 +77,7 @@ bash scripts/check-private-content.sh
 - **价格轴上的标签**：主图价格轴上的标签来自主图窗格里的曲线，以及别的窗格里 `forceOverlay` 为真的曲线；`display` 含价格轴位（4）且指标的 `showLabelsOnPriceScale` 为真才显示。标签显示的是 `lastValid`：线在过去某根 K 停了，轴上就一直挂着那根 K 的值。K 线组（`plotcandle`）只在轴上显示收盘那一个值。数值按指标的 `format` 印，`volume` 格式会显示成 83.42K 这种样子。
 - **`notExported` 不为空**：图上有工具还读不了的东西（例如渐变填色的上下沿、折线）。按缺口处理，不要当作图上没有；需要时再开发导出。
 - **就绪证据**：开盘时 `digestMovingAtRead` 有值是正常的；`unchangedAfterSwitch` 有值时，要对照截图确认表格不是上一个品种的；`resolvedSymbol` 的交易所名以 `_DL` / `_DLY` 结尾表示延迟行情。
+- **`history_from`（载入历史）**：日期按 UTC 当天 00:00 算。结果看每个品种的 `history`：`firstBarTime` 和 `barsCount` 与 `chart.csv` 一致；`reached` 为 `false` 而 `endOfData` 有值（`limit`：TradingView 对这个账户、这个周期只给到这里；`end`：数据本来就从这里开始）不是失败，那就是 TradingView 能给的全部，照实告诉用户起点。载入和指标重算没在 `ready_timeout_sec` 内完成时，该品种报 `NOT_READY_TIMEOUT`（`detail.reason` 为 `history`；卡在指标重算时 `detail.studyReason` 写明哪个条件没满足）。`capture_retry` 沿用原批次的参数（同一个 `history_from` 和 `ready_timeout_sec`），只能补上偶发的慢；每次都超时，就把失败的品种用更大的 `ready_timeout_sec` 另开一批。不要为了拿历史去改页面脚本、拖动图表或调 TradingView 的"跳转到日期"：后者会移动视图、改缩放，截图就不是平常那一屏了。
 - **单元测试全过、真实桌面版却报 `TV_INTERNALS_CHANGED`**：多半是 `tests/js/fake_tv.mjs` 没模拟到真实结构。先用 `doctor` 找到失效项，再用本机临时脚本读出相关对象的结构（只读类型、键名和数量，不读内容；脚本不提交，工具运行时仍只执行随版本固定的页面脚本），把假数据改成真实结构、看测试失败，再修页面脚本。2026-10-14 的 `studies.primitives` 误判就是这样：真实图表上，指标没画标签、线或框时，那里是一个空表，而假数据没有模拟。
 
 ## 桌面版升级后的修复流程
