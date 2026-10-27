@@ -31,6 +31,15 @@ def test_status_summary_and_read(root, capsys):
     assert payload["identity"]["symbol"] == SYMBOL
 
 
+def test_read_keeps_only_the_studies_asked_for(root, capsys):
+    out = root / "day"
+    make_batch(out, SYMBOL, extra_studies=({"id": "s2", "name": "Beta", "pane": 1, "lastValues": []},))
+    argv = ("read", "--output-dir", str(out), "--symbol", SYMBOL, "--part", "view", "--part", "lastValues")
+    code, payload = run(capsys, *argv, "--study", "Beta")
+    assert (code, [s["name"] for s in payload["studies"]]) == (0, ["Beta"])
+    assert payload["view"]["panes"][0]["index"] == 0
+
+
 def test_crop_writes_a_private_file(root, capsys):
     out = root / "day"
     make_batch(out, SYMBOL)

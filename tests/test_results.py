@@ -70,6 +70,40 @@ def test_symbol_data_shows_the_loaded_history(tmp_path):
     assert data["capture"]["history"] == history
 
 
+def test_symbol_data_shows_what_the_picture_holds(tmp_path):
+    root = tmp_path / "root"
+    root.mkdir()
+    config = Config(app_path=tmp_path / "TradingView.app", debug_port=9333, output_root=root.resolve())
+    image = {"pixelRatio": 2, "collapsedStudies": ["Alpha"]}
+    make_batch(config.output_root / "day", SYMBOL, capture_extra={"image": image})
+    data = results.symbol_data(config, str(config.output_root / "day"), SYMBOL, parts=["view"])
+    assert data["capture"]["image"] == image
+    assert data["view"]["timezone"] == "Etc/UTC"
+    assert data["view"]["panes"][0]["collapsed"] is False
+    assert "studies" not in data
+
+
+def test_symbol_data_reads_batches_from_before_the_picture_evidence(batch):
+    config, out = batch
+    data = results.symbol_data(config, str(out), SYMBOL)
+    assert "image" not in data["capture"]  # batches from 0.3.0 and earlier have none
+
+
+def test_symbol_data_keeps_only_the_studies_asked_for(tmp_path):
+    root = tmp_path / "root"
+    root.mkdir()
+    config = Config(app_path=tmp_path / "TradingView.app", debug_port=9333, output_root=root.resolve())
+    beta = {"id": "s2", "name": "Beta Bands", "pane": 1, "visible": True, "lastValues": [["Upper", 3]]}
+    make_batch(config.output_root / "day", SYMBOL, extra_studies=(beta,))
+    out = str(config.output_root / "day")
+    names = [s["name"] for s in results.symbol_data(config, out, SYMBOL)["studies"]]
+    assert names == ["Alpha", "Beta Bands"]
+    # A name matches when it contains one of the strings, the same rule required_studies uses.
+    data = results.symbol_data(config, out, SYMBOL, parts=["lastValues"], studies=["Bands"])
+    assert [(s["name"], s["lastValues"]) for s in data["studies"]] == [("Beta Bands", [["Upper", 3]])]
+    assert results.symbol_data(config, out, SYMBOL, studies=["Gamma"])["studies"] == []
+
+
 def test_symbol_data_parts_and_series(batch):
     config, out = batch
     data = results.symbol_data(config, str(out), SYMBOL, parts=["labels"], series_last=1)
@@ -97,6 +131,8 @@ def test_symbol_data_reads_colours_fills_bands_and_what_was_not_exported(batch):
     [
         ({"symbol": SYMBOL, "parts": ["secret"]}, "INVALID_ARGUMENT"),
         ({"symbol": SYMBOL, "series_last": 0}, "INVALID_ARGUMENT"),
+        ({"symbol": SYMBOL, "studies": [""]}, "INVALID_ARGUMENT"),
+        ({"symbol": SYMBOL, "studies": ["x" * 129]}, "INVALID_ARGUMENT"),
         ({"symbol": "BINANCE:ZZZUSDT.P"}, "NOT_FOUND"),
     ],
 )

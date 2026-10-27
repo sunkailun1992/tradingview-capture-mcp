@@ -8,13 +8,18 @@ export function plotList(rows, firstIndex = 0) {
   };
 }
 
-// Shaped like TradingView Desktop 3.4.1 (probed 2026-10-14): table cells sit directly under their key, while
-// labels, lines and boxes sit one level deeper in a map keyed by false, which stays empty while there are none.
-function primitiveCollection(key, items, nested) {
+// Shaped like TradingView Desktop 3.4.1 (probed 2026-10-14 and 2026-10-27): table cells sit directly under their key,
+// while labels, lines, boxes and tables sit one level deeper in a map keyed by force_overlay (false, or true for
+// drawings a script in another pane puts on the main chart), which stays empty while there are none.
+function primitiveCollection(key, items, nested, overlay = []) {
   const collection = new Map();
-  const primitives = { _primitivesDataById: new Map(items.map((item) => [item.id, item])) };
-  if (nested) collection.set(key, new Map(items.length ? [[false, primitives]] : []));
-  else if (items.length) collection.set(key, primitives);
+  const primitives = (list) => ({ _primitivesDataById: new Map(list.map((item) => [item.id, item])) });
+  if (nested) {
+    const groups = [];
+    if (items.length) groups.push([false, primitives(items)]);
+    if (overlay.length) groups.push([true, primitives(overlay)]);
+    collection.set(key, new Map(groups));
+  } else if (items.length) collection.set(key, primitives(items));
   return collection;
 }
 
@@ -35,7 +40,7 @@ function studyProperties(plotProps, props) {
   return { childs: () => childs };
 }
 
-export function makeStudy({ id, name, zorder, plots, rows, styles = {}, ohlcPlots, cells = [], labels = [], lines = [], boxes = [], status = 2, indexes = [], plotProps = {}, meta = {}, props = {}, tables = [], graphics = {} }) {
+export function makeStudy({ id, name, zorder, plots, rows, styles = {}, ohlcPlots, cells = [], labels = [], lines = [], boxes = [], status = 2, indexes = [], plotProps = {}, meta = {}, props = {}, tables = [], graphics = {}, overlay = {} }) {
   return {
     id: () => id,
     zorder: () => zorder,
@@ -48,10 +53,10 @@ export function makeStudy({ id, name, zorder, plots, rows, styles = {}, ohlcPlot
       _indexes: indexes,
       _primitivesCollection: {
         dwgtablecells: primitiveCollection('tableCells', cells, false),
-        dwgtables: primitiveCollection('tables', tables, false),
-        dwglabels: primitiveCollection('labels', labels, true),
-        dwglines: primitiveCollection('lines', lines, true),
-        dwgboxes: primitiveCollection('boxes', boxes, true),
+        dwgtables: primitiveCollection('tables', tables, true, overlay.tables),
+        dwglabels: primitiveCollection('labels', labels, true, overlay.labels),
+        dwglines: primitiveCollection('lines', lines, true, overlay.lines),
+        dwgboxes: primitiveCollection('boxes', boxes, true, overlay.boxes),
         // Every live study has this one; it holds script statistics, not drawings.
         performance: new Map([['performance', {}]]),
         // Kinds the export does not read (polylines, linefills, ...) are empty maps on the live chart.
@@ -82,11 +87,48 @@ function makeHistory(history) {
   };
 }
 
-export function makeTradingView({ symbol = 'BINANCE:BTCUSDT.P', resolution = '1D', bars, panes, shapes = [], onSetSymbol, history = {} }) {
+// The picture as TradingView Desktop 3.4.1 describes it (probed 2026-10-27): getPanes() lists the panes top to bottom
+// with their height in CSS pixels and whether they are collapsed or maximized, each with the visible price range and
+// mode of its main price scale; the time scale's strict range gives the first and last bar index on screen, empty
+// slots right of the last bar included. `view: null` builds a chart without any of these.
+function makeView(view, paneCount) {
+  if (view === null) return { chart: {}, window: {}, timeScale: undefined };
+  const spec = {
+    timezone: 'Asia/Tokyo', chartType: 1, strictRange: { first: -3, last: 5 }, pixelRatio: 2,
+    panes: Array.from({ length: paneCount }, (_, i) => ({
+      height: i === 0 ? 400 : 120, collapsed: false, maximized: false, priceRange: { from: 0.5, to: 2.5 }, mode: 0,
+    })),
+    ...view,
+  };
+  const paneApi = (pane, index) => {
+    const scale = { getVisiblePriceRange: () => pane.priceRange, getMode: () => pane.mode };
+    return {
+      paneIndex: () => index, getHeight: () => pane.height, isCollapsed: () => pane.collapsed,
+      isMaximized: () => pane.maximized, getMainSourcePriceScale: () => scale,
+    };
+  };
+  return {
+    chart: {
+      getPanes: () => spec.panes.map(paneApi),
+      getTimezone: () => spec.timezone,
+      chartType: () => spec.chartType,
+    },
+    window: { devicePixelRatio: spec.pixelRatio },
+    timeScale: () => ({
+      visibleBarsStrictRange: () => ({ firstBar: () => spec.strictRange.first, lastBar: () => spec.strictRange.last }),
+    }),
+  };
+}
+
+// `listed` maps a shown name to the listing it trades under (symbolInfo().pro_name), e.g. BATS:AAPL -> NASDAQ:AAPL on
+// accounts without the exchange's own real-time data (probed on TradingView Desktop 3.4.1, 2026-10-27).
+export function makeTradingView({ symbol = 'BINANCE:BTCUSDT.P', resolution = '1D', bars, panes, shapes = [], onSetSymbol, history = {}, view = {}, listed = {} }) {
   const state = { symbol, resolution };
   const studies = panes.flat();
   const builtin = { id: () => 'builtin', zorder: () => 10000006, metaInfo: () => ({ description: 'Dividends', plots: [] }) };
+  const picture = makeView(view, panes.length);
   const chart = {
+    ...picture.chart,
     symbol: () => state.symbol,
     resolution: () => state.resolution,
     setSymbol: (value, done) => {
@@ -107,7 +149,11 @@ export function makeTradingView({ symbol = 'BINANCE:BTCUSDT.P', resolution = '1D
   };
   const series = {
     bars: () => bars,
-    symbolInfo: () => ({ description: 'Bitcoin / TetherUS', exchange: 'Binance', pricescale: 100, minmov: 1 }),
+    symbolInfo: () => ({
+      description: 'Bitcoin / TetherUS', exchange: 'Binance', pricescale: 100, minmov: 1,
+      type: 'crypto', currency_code: 'USDT', timezone: 'Etc/UTC', session: '24x7',
+      pro_name: listed[state.symbol] || state.symbol,
+    }),
     ...makeHistory(history),
   };
   const model = {
@@ -115,9 +161,11 @@ export function makeTradingView({ symbol = 'BINANCE:BTCUSDT.P', resolution = '1D
     model: () => ({
       dataSources: () => [...studies].reverse().concat([builtin]),
       panes: () => panes.map((list) => ({ dataSources: () => list })),
+      timeScale: picture.timeScale,
     }),
   };
   return {
+    ...picture.window,
     TradingViewApi: {
       activeChart: () => chart,
       _activeChartWidgetWV: { value: () => ({ _chartWidget: { model: () => model } }) },

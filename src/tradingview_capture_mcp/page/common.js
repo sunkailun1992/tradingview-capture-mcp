@@ -19,6 +19,17 @@ function text(value) {
   return value === null || value === undefined ? null : String(value);
 }
 
+// The listing the shown symbol trades under. Without an exchange's own real-time data the chart shows the feed
+// that serves it (BATS:AAPL for NASDAQ:AAPL) and pro_name keeps the listing (TradingView Desktop 3.4.1, 2026-10-27).
+function listedSymbol() {
+  try {
+    const info = model.mainSeries().symbolInfo();
+    return info && typeof info.pro_name === 'string' && info.pro_name !== '' ? info.pro_name : null;
+  } catch (e) {
+    return null;
+  }
+}
+
 function barTime(index) {
   if (typeof index !== 'number') return null;
   const bar = bars.valueAt(index);
@@ -86,12 +97,24 @@ function exportedPlots(meta) {
   return out;
 }
 
-function primitives(source, collection, key) {
+// A study's drawings of one kind in their groups. Table cells sit directly under their key; labels, lines, boxes and
+// tables sit one level deeper in a map keyed by force_overlay, true for those a script in another pane draws on the
+// main chart (TradingView Desktop 3.4.1, probed 2026-10-14 and 2026-10-27).
+function primitiveGroups(source, collection, key) {
   const all = source._graphics && source._graphics._primitivesCollection;
   if (!all || !all[collection] || typeof all[collection].get !== 'function') return [];
   const outer = all[collection].get(key);
   if (!outer) return [];
-  const inner = typeof outer.get === 'function' ? outer.get(false) || outer : outer;
-  const byId = inner && inner._primitivesDataById;
-  return byId ? Array.from(byId.values()) : [];
+  if (outer._primitivesDataById) return [{ forceOverlay: false, items: Array.from(outer._primitivesDataById.values()) }];
+  if (typeof outer.forEach !== 'function') return [];
+  const groups = [];
+  outer.forEach((inner, overlay) => {
+    const byId = inner && inner._primitivesDataById;
+    if (byId) groups.push({ forceOverlay: overlay === true, items: Array.from(byId.values()) });
+  });
+  return groups;
+}
+
+function primitives(source, collection, key) {
+  return primitiveGroups(source, collection, key).flatMap((group) => group.items);
 }

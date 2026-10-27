@@ -7,8 +7,14 @@ try {
 } catch (e) {
   info = null;
 }
+
+function stringOf(value) {
+  return typeof value === 'string' && value !== '' ? value : null;
+}
+
 const identity = {
   symbol: chart.symbol(),
+  listedSymbol: listedSymbol(),
   resolution: chart.resolution(),
   description: (info && info.description) || null,
   exchange: (info && (info.exchange || info.listed_exchange)) || null,
@@ -18,6 +24,66 @@ const identity = {
   // Prices are shown in steps of minMove / priceScale (priceScale 100 means two decimals).
   priceScale: info && typeof info.pricescale === 'number' ? info.pricescale : null,
   minMove: info && typeof info.minmov === 'number' ? info.minmov : null,
+  // Market type, quote currency, the exchange's time zone and the trading session in that zone (e.g. 0930-1600).
+  type: stringOf(info && info.type),
+  currency: stringOf(info && info.currency_code),
+  timezone: stringOf(info && info.timezone),
+  session: stringOf(info && info.session),
+};
+
+// A reading of the picture that is missing or throws counts as null, so the export never depends on it.
+function attempt(read) {
+  try {
+    const value = read();
+    return value === undefined ? null : value;
+  } catch (e) {
+    return null;
+  }
+}
+
+function rangeOf(value) {
+  return value && num(value.from) !== null && num(value.to) !== null ? { from: value.from, to: value.to } : null;
+}
+
+function bool(value) {
+  return typeof value === 'boolean' ? value : null;
+}
+
+// The first and last loaded bar on screen, as times in chart.csv. The time scale's strict range counts the empty
+// slots right of the last bar too, so it is clipped to the loaded bars. The public getVisibleBarsRange is not used:
+// it gives a stock's daily or 4h bar at 00:00 UTC of its date, not at the session time chart.csv holds.
+function visibleBars() {
+  const range = attempt(() => model.model().timeScale().visibleBarsStrictRange());
+  const first = range ? num(attempt(() => range.firstBar())) : null;
+  const final = range ? num(attempt(() => range.lastBar())) : null;
+  if (first === null || final === null || bars.size() === 0) return null;
+  const from = barTime(Math.max(first, bars.firstIndex()));
+  const to = barTime(Math.min(final, lastIndex));
+  return from !== null && to !== null && from <= to ? { from, to } : null;
+}
+
+// What image.png shows: the panes from top to bottom with their height in CSS pixels, whether each is collapsed
+// (only its title row shows) or maximized (the other panes are hidden), the bars on screen, the time zone of the
+// time axis and image pixels per CSS pixel (TradingView Desktop 3.4.1, probed 2026-10-27).
+const paneApis = attempt(() => chart.getPanes());
+const view = {
+  timezone: stringOf(attempt(() => chart.getTimezone())),
+  chartType: num(attempt(() => chart.chartType())),
+  visibleBars: visibleBars(),
+  pixelRatio: num(window.devicePixelRatio),
+  panes: (Array.isArray(paneApis) ? paneApis : []).map((pane, i) => {
+    const scale = attempt(() => pane.getMainSourcePriceScale());
+    const index = num(attempt(() => pane.paneIndex()));
+    return {
+      index: index === null ? i : index,
+      height: num(attempt(() => pane.getHeight())),
+      collapsed: bool(attempt(() => pane.isCollapsed())),
+      maximized: bool(attempt(() => pane.isMaximized())),
+      priceRange: scale ? rangeOf(attempt(() => scale.getVisiblePriceRange())) : null,
+      // 0 normal, 1 logarithmic, 2 percent, 3 indexed to 100.
+      priceScaleMode: scale ? num(attempt(() => scale.getMode())) : null,
+    };
+  }),
 };
 
 function plain(value) {
@@ -136,20 +202,26 @@ function lastValid(data, column) {
 // Graphics kinds the export reads, plus script statistics that are not drawings.
 const READ_GRAPHICS = new Set(['dwgtablecells', 'dwgtables', 'dwglabels', 'dwglines', 'dwgboxes', 'performance']);
 
-// Items in a primitives collection, whichever of the two layouts it uses. Anything that cannot be read the usual way
-// (not a Map, an unknown inner layout, a read that throws) counts as present, so it is reported rather than taken for
-// empty; the live chart's empty collections are empty Maps and count 0.
+function groupCount(group) {
+  const byId = group && group._primitivesDataById;
+  if (byId && typeof byId.size === 'number') return byId.size;
+  return group ? 1 : 0;
+}
+
+// Items in a primitives collection, whichever of the two layouts it uses and in every force_overlay group. Anything
+// that cannot be read the usual way (not a Map, an unknown inner layout, a read that throws) counts as present, so it
+// is reported rather than taken for empty; the live chart's empty collections are empty Maps and count 0.
 function itemCount(collection) {
   if (!collection) return 0;
   try {
     if (typeof collection.values !== 'function') return Object.keys(collection).length > 0 ? 1 : 0;
     let count = 0;
     for (const outer of collection.values()) {
-      const inner = outer && typeof outer.get === 'function' ? outer.get(false) || outer : outer;
-      const byId = inner && inner._primitivesDataById;
-      if (byId && typeof byId.size === 'number') count += byId.size;
-      else if (inner && typeof inner.size === 'number') count += inner.size;
-      else if (inner) count += 1;
+      if (outer && !outer._primitivesDataById && typeof outer.forEach === 'function') {
+        outer.forEach((inner) => {
+          count += groupCount(inner);
+        });
+      } else count += groupCount(outer);
     }
     return count;
   } catch (e) {
@@ -158,12 +230,28 @@ function itemCount(collection) {
 }
 
 // What a study holds that the export leaves out, so a caller never takes a missing part for an empty one.
-function notExportedOf(source, meta) {
+function notExportedOf(source, meta, skippedCells) {
   const all = (source._graphics && source._graphics._primitivesCollection) || {};
+  const graphics = Object.keys(all).filter((key) => !READ_GRAPHICS.has(key) && itemCount(all[key]) > 0);
+  if (skippedCells > 0) graphics.push('dwgtablecells');
   return {
     plots: meta.plots.filter((p) => p.type === 'data').map((p) => ({ id: p.id, type: p.type, target: p.target || null })),
-    graphics: Object.keys(all).filter((key) => !READ_GRAPHICS.has(key) && itemCount(all[key]) > 0),
+    graphics,
   };
+}
+
+// Pine tables are small; a cell placed outside these bounds is a structure the export does not understand, so it is
+// counted as not exported rather than allowed to stop the read or fill memory.
+const MAX_TABLE_SIZE = 1000;
+
+function cellInBounds(cell) {
+  const inside = (n) => Number.isInteger(n) && n >= 0 && n < MAX_TABLE_SIZE;
+  return Boolean(cell) && inside(cell.row) && inside(cell.col);
+}
+
+// Every item of one drawing kind, each with the force_overlay flag of its group.
+function drawn(source, collection, key) {
+  return primitiveGroups(source, collection, key).flatMap((group) => group.items.map((item) => [item, group.forceOverlay]));
 }
 
 const ordered = orderedStudies();
@@ -188,7 +276,12 @@ const studies = ordered.map((source, studyIndex) => {
   };
   const tables = new Map();
   const cellColors = new Map();
+  let skippedCells = 0;
   for (const cell of primitives(source, 'dwgtablecells', 'tableCells')) {
+    if (!cellInBounds(cell)) {
+      skippedCells += 1;
+      continue;
+    }
     const id = String(cell.tid || 0);
     if (!tables.has(id)) {
       tables.set(id, []);
@@ -209,23 +302,25 @@ const studies = ordered.map((source, studyIndex) => {
     row[cell.col] = text(cell.t);
     colorRow[cell.col] = { text: css(cell.tc), background: css(cell.bgc) };
   }
-  const positions = new Map(primitives(source, 'dwgtables', 'tables').map((t) => [String(t.id), t.pos || null]));
+  // forceOverlay: drawn on the main chart, its y a price there, although the study sits in another pane.
+  const placed = new Map(drawn(source, 'dwgtables', 'tables').map(([t, forceOverlay]) => [String(t.id), { position: t.pos || null, forceOverlay }]));
   const at = (x) => graphicsBar(source, x);
-  const labels = primitives(source, 'dwglabels', 'labels').map((l) => ({
+  const labels = drawn(source, 'dwglabels', 'labels').map(([l, forceOverlay]) => ({
     id: l.id, index: at(l.x), time: barTime(at(l.x)), price: num(l.y), text: text(l.t) || '',
     style: l.st || null, color: l.ci === undefined ? null : l.ci, textColor: l.tci === undefined ? null : l.tci,
     size: l.sz || null, tooltip: l.tt || null, yloc: l.yl || null, textAlign: l.ta || null,
-    colorCss: css(l.ci), textColorCss: css(l.tci),
+    colorCss: css(l.ci), textColorCss: css(l.tci), forceOverlay,
   }));
-  const lines = primitives(source, 'dwglines', 'lines').map((l) => ({
+  const lines = drawn(source, 'dwglines', 'lines').map(([l, forceOverlay]) => ({
     id: l.id, index1: at(l.x1), time1: barTime(at(l.x1)), price1: num(l.y1),
     index2: at(l.x2), time2: barTime(at(l.x2)), price2: num(l.y2),
     extend: l.ex || null, style: l.st === undefined ? null : l.st, color: l.ci === undefined ? null : l.ci,
-    width: l.w === undefined ? null : l.w, colorCss: css(l.ci),
+    width: l.w === undefined ? null : l.w, colorCss: css(l.ci), forceOverlay,
   }));
   // Boxes keep every field TradingView stores; their left and right edges also get bar times, as lines do.
-  const boxes = primitives(source, 'dwgboxes', 'boxes').map((b) => ({
+  const boxes = drawn(source, 'dwgboxes', 'boxes').map(([b, forceOverlay]) => ({
     ...(plain(b) || { id: b.id }), index1: at(b.x1), time1: barTime(at(b.x1)), index2: at(b.x2), time2: barTime(at(b.x2)),
+    forceOverlay,
   }));
   const data = source.data();
   const row = data && data.size() > 0 ? data.valueAt(lastIndex) : null;
@@ -287,8 +382,11 @@ const studies = ordered.map((source, studyIndex) => {
     visible: flagOf(nodes.visible), showLabelsOnPriceScale: flagOf(nodes.showLabelsOnPriceScale),
     // How the study's values are printed, e.g. { type: 'volume' } shows 83424 as 83.42K on the price scale.
     format: plain(meta.format || null),
-    tables: Array.from(tables, ([id, rows]) => ({ id, position: positions.get(id) || null, rows, cellColors: cellColors.get(id) })),
-    labels, lines, boxes, lastValues, plots, colors, fills, bands, notExported: notExportedOf(source, meta),
+    tables: Array.from(tables, ([id, rows]) => {
+      const table = placed.get(id) || { position: null, forceOverlay: false };
+      return { id, position: table.position, forceOverlay: table.forceOverlay, rows, cellColors: cellColors.get(id) };
+    }),
+    labels, lines, boxes, lastValues, plots, colors, fills, bands, notExported: notExportedOf(source, meta, skippedCells),
     unresolvedGraphicColors,
   };
 });
@@ -349,4 +447,6 @@ for (let i = bars.firstIndex(); i <= lastIndex; i += 1) {
   csvLines.push(cells.join(','));
 }
 
-return { identity, studies, drawings, series: { columns: header.length, rows: csvLines.length - 1, csv: csvLines.join('\n') } };
+return {
+  identity, view, studies, drawings, series: { columns: header.length, rows: csvLines.length - 1, csv: csvLines.join('\n') },
+};

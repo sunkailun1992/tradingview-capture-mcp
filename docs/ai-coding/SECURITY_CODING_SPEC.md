@@ -12,11 +12,12 @@ Seven rules: the DevTools port listens on loopback only and only while capturing
 ## 2. 页面脚本
 
 - 只运行 `page/` 下随版本固定的脚本；参数只以 `json.dumps` 生成的 JSON 字面量传入，绝不拼接进代码。
+- `tests/test_scope.py` 扫描页面脚本：只有 `switch.js` 调切换品种和周期、只有 `history.js` 调 `requestMoreData`，任何脚本都不调改指标、绘图、视图、窗格的方法，不碰网络、存储、cookie 和 `eval`；DevTools 客户端只发 `Runtime.evaluate`。
 - 除 `switch.js` 和 `history.js` 外的脚本都不得改变图表状态。`switch.js` 只切换品种和周期，收尾恢复；`history.js` 只在调用方传了 `history_from` 时向数据源要更早的 K 线（主图序列的 `requestMoreData`），不移动视图、不改缩放和任何属性，换品种即丢弃，所以不需要恢复。
 
 ## 3. 进程
 
-- 桌面版用固定参数列表启动，不经 shell；停止时只对自己持有的 `Popen` 对象发信号（先 SIGTERM，超时 SIGKILL）。
+- 桌面版用固定参数列表启动，不经 shell；环境去掉 `ELECTRON_*`、`DYLD_*`、`NODE_OPTIONS`、`NODE_PATH`，免得宿主传下来的变量让它以纯 Node 启动或载入别的代码。停止时只对自己持有的 `Popen` 对象发信号（先 SIGTERM，超时 SIGKILL）。
 - 发现桌面版已经在普通模式下运行时报 `TV_ALREADY_RUNNING`，绝不结束用户的程序。
 - 禁止 `pkill`、`killall` 和任何按进程名结束进程的做法。
 

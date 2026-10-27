@@ -35,8 +35,10 @@ def make_batch(
     csv_text: str = DEFAULT_CSV,
     png: bytes | None = None,
     capture_extra: dict | None = None,
+    extra_studies: tuple[dict, ...] = (),
 ) -> Path:
-    """A finished one-symbol batch shaped like the capture output; capture_extra adds keys to capture.json."""
+    """A finished one-symbol batch shaped like the capture output; capture_extra adds keys to capture.json and
+    extra_studies more studies after Alpha to data.json."""
     ensure_dir(out)
     ensure_dir(out / "raw")
     folder = out / "raw" / safe_name(symbol)
@@ -44,6 +46,22 @@ def make_batch(
     data = {
         "schemaVersion": 1,
         "identity": {"symbol": symbol, "resolution": "1D"},
+        "view": {
+            "timezone": "Etc/UTC",
+            "chartType": 1,
+            "visibleBars": {"from": 1000, "to": 2000},
+            "pixelRatio": 2,
+            "panes": [
+                {
+                    "index": 0,
+                    "height": 400,
+                    "collapsed": False,
+                    "maximized": False,
+                    "priceRange": {"from": 0.5, "to": 2.5},
+                    "priceScaleMode": 0,
+                }
+            ],
+        },
         "studies": [
             {
                 "id": "s1",
@@ -69,7 +87,8 @@ def make_batch(
                 "fills": [{"id": "fill_0", "between": ["hline_0", "hline_1"]}],
                 "bands": [{"id": "hline_0", "value": 90}],
                 "notExported": {"plots": [], "graphics": []},
-            }
+            },
+            *extra_studies,
         ],
         "drawings": [],
         "readiness": {"polls": 3},

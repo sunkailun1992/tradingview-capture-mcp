@@ -28,11 +28,15 @@ class ReadySnapshot:
     resolution: str
     last_bar_time: int | None
     studies: tuple[StudyState, ...]
+    # The listing the shown symbol trades under (pro_name), e.g. NASDAQ:AAPL while the chart shows BATS:AAPL.
+    listed_symbol: str | None = None
 
     @classmethod
     def from_page(cls, raw: dict[str, Any]) -> ReadySnapshot:
+        listed = raw.get("listedSymbol")
         return cls(
             symbol=str(raw.get("symbol") or ""),
+            listed_symbol=None if listed is None else str(listed),
             resolution=str(raw.get("resolution") or ""),
             last_bar_time=raw.get("lastBarTime"),
             studies=tuple(
@@ -46,6 +50,9 @@ class ReadySnapshot:
                 for s in raw.get("studies") or []
             ),
         )
+
+    def shows(self, code: str) -> bool:
+        return same_symbol(self.symbol, code, self.listed_symbol)
 
     def structure(self) -> tuple[Any, ...]:
         """Everything but the study digests, which move on every tick while a market is open."""
@@ -83,7 +90,7 @@ def judge(
 ) -> ReadyVerdict:
     """Ready means: right symbol and resolution, every study finished on the last bar, two equal reads,
     and the studies' output differs from the previous symbol's (or the grace period has passed)."""
-    if not same_symbol(current.symbol, target):
+    if not current.shows(target):
         return ReadyVerdict(False, "symbol")
     if normalize_resolution(current.resolution) != normalize_resolution(timeframe):
         return ReadyVerdict(False, "resolution")
@@ -97,7 +104,7 @@ def judge(
     if previous is None or previous.structure() != current.structure():
         return ReadyVerdict(False, "unstable")
     unchanged: tuple[str, ...] = ()
-    if before_switch is not None and not same_symbol(before_switch.symbol, target):
+    if before_switch is not None and not before_switch.shows(target):
         old = {s.id: s.digest for s in before_switch.studies}
         unchanged = tuple(s.name for s in current.studies if old.get(s.id) == s.digest)
         if unchanged and elapsed < grace_sec:

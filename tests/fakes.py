@@ -71,6 +71,10 @@ class FakeChart:
         history_floor=None,
         history_stuck=(),
         history_breaks_studies=False,
+        second_pane=(),
+        collapsed_panes=(),
+        maximized_pane=None,
+        listed=None,
     ):
         self.symbol = start_symbol
         self.previous = start_symbol
@@ -99,6 +103,11 @@ class FakeChart:
         self.history_floor = history_floor  # TradingView has no bars before this time ("limit")
         self.history_stuck = set(history_stuck)  # symbols whose requests for older bars are never answered
         self.history_breaks_studies = history_breaks_studies  # the studies never finish on the longer history
+        self.second_pane = set(second_pane)  # studies in the second pane; the first pane holds the others
+        self.collapsed_panes = set(collapsed_panes)  # indexes of the panes collapsed on the layout
+        self.maximized_pane = maximized_pane  # index of the pane maximized on the layout, if any
+        # shown name -> the listing it trades under (pro_name), e.g. BATS:AAPL -> NASDAQ:AAPL
+        self.listed = dict(listed or {})
         self.extracted_settled = []  # whether the studies had finished when each extract ran
         self._new_series()
 
@@ -106,6 +115,9 @@ class FakeChart:
         self.history_first, self.history_bars = HISTORY_FIRST, HISTORY_BARS
         self.history_end = None
         self.history_pending = None
+
+    def _listed(self):
+        return self.listed.get(self.symbol, self.symbol)
 
     def run(self, script, args=None, *, timeout=60.0):
         self.calls.append((script, dict(args or {})))
@@ -143,6 +155,7 @@ class FakeChart:
         source = self.symbol if settled else self.previous
         return {
             "symbol": self.symbol,
+            "listedSymbol": self._listed(),
             "resolution": self.resolution,
             "lastBarTime": 2000,
             "studies": [
@@ -170,7 +183,7 @@ class FakeChart:
                 0,
             )
         self.resolution = args.get("timeframe") or self.resolution
-        after = {"symbol": self.symbol, "resolution": self.resolution}
+        after = {"symbol": self.symbol, "listedSymbol": self._listed(), "resolution": self.resolution}
         self._new_series()
         if self.symbol in self.revert_once:
             self.revert_once.discard(self.symbol)
@@ -201,6 +214,7 @@ class FakeChart:
         loading = self.history_pending is not None
         state = {
             "symbol": self.symbol,
+            "listedSymbol": self._listed(),
             "resolution": self.resolution,
             "bars": self.history_bars,
             "firstBarTime": self.history_first,
@@ -222,16 +236,37 @@ class FakeChart:
         return {
             "identity": {
                 "symbol": self.symbol,
+                "listedSymbol": self._listed(),
                 "resolution": self.resolution,
                 "barsCount": self.history_bars,
                 "firstBarTime": self.history_first,
                 "lastBar": {"time": 2000},
             },
+            "view": {
+                "timezone": "Etc/UTC",
+                "chartType": 1,
+                "visibleBars": {"from": 1000, "to": 2000},
+                "pixelRatio": 2,
+                "panes": [
+                    {
+                        "index": index,
+                        "height": 33 if index in self.collapsed_panes else 400,
+                        "collapsed": index in self.collapsed_panes,
+                        "maximized": self.maximized_pane == index,
+                        "priceRange": {"from": 0.5, "to": 2.5},
+                        "priceScaleMode": 0,
+                    }
+                    for index in (0, 1)
+                ],
+            },
             "studies": [
                 {
                     "id": f"s{i}",
                     "name": name,
+                    "pane": 1 if name in self.second_pane else 0,
                     "visible": name not in self.hidden_studies,
+                    # TradingView keeps the script's encoded body among the inputs as `text`.
+                    "inputs": {"length": 14, "text": f"QUJD{name}", "pineId": "PUB;0001"},
                     "tables": [{"id": "0", "rows": [[name, self.symbol]]}],
                     "labels": [],
                     "lines": [],

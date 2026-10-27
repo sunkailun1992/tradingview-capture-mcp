@@ -13,6 +13,7 @@ const first = size > 0 ? bars.valueAt(bars.firstIndex()) : null;
 const last = size > 0 ? bars.valueAt(bars.lastIndex()) : null;
 const state = {
   symbol: chart.symbol(),
+  listedSymbol: listedSymbol(),
   resolution: chart.resolution(),
   bars: size,
   firstBarTime: first ? first[0] : null,

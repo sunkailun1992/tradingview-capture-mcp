@@ -60,6 +60,9 @@ def build_parser() -> argparse.ArgumentParser:
     read.add_argument("--symbol", required=True)
     read.add_argument("--part", action="append")
     read.add_argument("--series-last", type=int)
+    read.add_argument(
+        "--study", action="append", help="keep only studies whose name contains this; repeat for more"
+    )
     crop = sub.add_parser("crop", help="save a crop of a symbol's image")
     crop.add_argument("--output-dir", required=True)
     crop.add_argument("--symbol", required=True)
@@ -117,7 +120,12 @@ def _dispatch(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         return jobs.status(config, job_id=args.job_id, output_dir=args.output_dir), 0
     if args.command == "read":
         return results.symbol_data(
-            config, args.output_dir, args.symbol, parts=args.part, series_last=args.series_last
+            config,
+            args.output_dir,
+            args.symbol,
+            parts=args.part,
+            series_last=args.series_last,
+            studies=args.study,
         ), 0
     if args.command == "crop":
         return results.save_crop(config, args.output_dir, args.symbol, _box(args.box), args.out), 0

@@ -26,8 +26,10 @@ STUDY_PARTS = (
     "bands",
     "notExported",
 )
-ALL_PARTS = ("identity", "drawings", "readiness", *STUDY_PARTS)
+CHART_PARTS = ("identity", "view", "drawings", "readiness")
+ALL_PARTS = (*CHART_PARTS, *STUDY_PARTS)
 MAX_SERIES_ROWS = 1000
+MAX_STUDY_FILTERS = 32
 
 
 def batch_summary(config: Config, output_dir: str) -> dict[str, Any]:
@@ -52,7 +54,10 @@ def symbol_data(
     symbol: str,
     parts: list[str] | None = None,
     series_last: int | None = None,
+    studies: list[str] | None = None,
 ) -> dict[str, Any]:
+    """One symbol's data; `studies` keeps the studies whose name contains one of its strings, as
+    required_studies matches them, so a caller reads only what it checks."""
     wanted = tuple(parts) if parts else DEFAULT_PARTS
     unknown = [p for p in wanted if p not in ALL_PARTS]
     if unknown:
@@ -61,6 +66,10 @@ def symbol_data(
         )
     if series_last is not None and not 1 <= series_last <= MAX_SERIES_ROWS:
         raise CaptureError(INVALID_ARGUMENT, f"series_last must be between 1 and {MAX_SERIES_ROWS}", {})
+    if studies is not None and (
+        len(studies) > MAX_STUDY_FILTERS or any(not name or len(name) > 128 for name in studies)
+    ):
+        raise CaptureError(INVALID_ARGUMENT, f"studies must be up to {MAX_STUDY_FILTERS} non-empty names", {})
     folder = _symbol_dir(config, output_dir, symbol)
     data = read_json(folder / "data.json")
     capture = read_json(folder / "capture.json")
@@ -75,9 +84,10 @@ def symbol_data(
             "files": capture.get("files"),
         },
     }
-    if "history" in capture:  # captured with history_from
-        result["capture"]["history"] = capture["history"]
-    for part in ("identity", "drawings", "readiness"):
+    for key in ("image", "history"):  # image since 0.4.0; history only with history_from
+        if key in capture:
+            result["capture"][key] = capture[key]
+    for part in CHART_PARTS:
         if part in wanted:
             result[part] = data.get(part)
     study_parts = [p for p in STUDY_PARTS if p in wanted]
@@ -92,6 +102,7 @@ def symbol_data(
                 **{p: s.get(p) for p in study_parts},
             }
             for s in data.get("studies", [])
+            if studies is None or any(name in str(s.get("name") or "") for name in studies)
         ]
     if series_last:
         rows = list(csv.reader(io.StringIO((folder / "chart.csv").read_text(encoding="utf-8"))))

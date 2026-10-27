@@ -8,7 +8,7 @@ Three layers: Python unit tests with fakes (`pytest`, warnings are errors), page
 
 | 层 | 命令 | 测什么 |
 |---|---|---|
-| 单元 | `uv run pytest -q` | 配置、写文件、CDP 客户端（本机假 WebSocket 服务）、启停（假桌面版脚本）、就绪判断、载入历史（假序列：按请求延迟应答、有最早时间、永不应答）、批次流程（`FakeChart` / `FakeDesktop` / `FakeClock`）、任务、读取、命令行、MCP |
+| 单元 | `uv run pytest -q` | 配置、写文件、CDP 客户端（本机假 WebSocket 服务）、启停（假桌面版脚本）、就绪判断、载入历史（假序列：按请求延迟应答、有最早时间、永不应答）、批次流程（`FakeChart` / `FakeDesktop` / `FakeClock`）、任务、读取、命令行、MCP；`test_scope.py` 扫描源码守住 AGENTS.md 的硬规则 |
 | 页面脚本 | `node --test "tests/js/*.test.mjs"` | 每个页面脚本在 `fake_tv.mjs` 假图表模型上的返回值，包装方式与 `page.build()` 一致 |
 | 活体 | `TRADINGVIEW_CAPTURE_LIVE=1 uv run pytest -m live -q` | 已登录的桌面版上采一个品种，私有输入来自 `TRADINGVIEW_CAPTURE_LIVE_*` 环境变量；另设 `TRADINGVIEW_CAPTURE_LIVE_HISTORY_FROM`（`YYYY-MM-DD`）时再采一次并载入日线历史到那一天。只在维护者本机运行，CI 不跑 |
 

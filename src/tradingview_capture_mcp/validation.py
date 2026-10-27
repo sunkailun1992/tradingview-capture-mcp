@@ -46,11 +46,13 @@ def history_from_time(value: str) -> int:
 DELAYED_FEED_SUFFIXES = ("_DL", "_DLY")
 
 
-def same_symbol(actual: str, requested: str) -> bool:
-    """True when the chart shows the requested code, directly or from its delayed feed."""
+def same_symbol(actual: str, requested: str, listed: str | None = None) -> bool:
+    """True when the chart shows the requested code, directly, from its delayed feed, or from the feed that
+    serves its listing: without an exchange's own real-time data the chart shows BATS:AAPL for NASDAQ:AAPL,
+    and the symbol's pro_name (`listed`) keeps NASDAQ:AAPL."""
     if not actual:
         return False
-    if actual == requested:
+    if actual == requested or listed == requested:
         return True
     actual_exchange, _, actual_ticker = actual.partition(":")
     requested_exchange, _, requested_ticker = requested.partition(":")
