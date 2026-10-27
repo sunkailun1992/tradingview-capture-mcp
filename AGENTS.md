@@ -85,6 +85,7 @@ bash scripts/check-private-content.sh
 - **`collapsedStudies` 不为空**：这些指标所在的窗格在布局里被收起（或别的窗格被最大化），截图里没有那个窗格，数据照常导出（`forceOverlay` 的曲线仍画在主图上）。有的布局故意收起某个窗格，这不算失败，工具也不会停；但要对照截图核对的指标出现在这里时，请用户在 TradingView 里把窗格拉开，再重采。各窗格的高度、收起与最大化状态在 `data.json` 的 `view.panes`。
 - **`LAYOUT_NOT_FOUND`**：桌面版启动了，却没有标签页显示这个布局。布局要从 TradingView 的服务器载入，启动时网络断了就会停在这里（2026-10-26 网络不稳时出现过）；布局 ID 写错或不在这个账户也一样。看明细：`targetList` 为 `false` 是调试端口的标签页列表都没取到；`chartPages` 大于 0 是开着别的布局。网络恢复后对同一个 `output_dir` 调 `capture_retry`；不要去改页面脚本。
 - **`history_from`（载入历史）**：日期按 UTC 当天 00:00 算。结果看每个品种的 `history`：`firstBarTime` 和 `barsCount` 与 `chart.csv` 一致；`reached` 为 `false` 而 `endOfData` 有值（`limit`：TradingView 对这个账户、这个周期只给到这里；`end`：数据本来就从这里开始）不是失败，那就是 TradingView 能给的全部，照实告诉用户起点。载入和指标重算没在 `ready_timeout_sec` 内完成时，该品种报 `NOT_READY_TIMEOUT`（`detail.reason` 为 `history`；卡在指标重算时 `detail.studyReason` 写明哪个条件没满足）。`capture_retry` 沿用原批次的参数（同一个 `history_from` 和 `ready_timeout_sec`），只能补上偶发的慢；每次都超时，就把失败的品种用更大的 `ready_timeout_sec` 另开一批。不要为了拿历史去改页面脚本、拖动图表或调 TradingView 的"跳转到日期"：后者会移动视图、改缩放，截图就不是平常那一屏了。
+- **`INVALID_ARGUMENT` 带 `unknown`**：传了工具不接受的参数名（多半是拼错，例如 `time_frame`）。按明细里的 `allowed` 改名再调；这个检查在 `mcp_server.py` 的 `_StrictServer.call_tool`，不要为了让旧调用通过而放宽它。
 - **单元测试全过、真实桌面版却报 `TV_INTERNALS_CHANGED`**：多半是 `tests/js/fake_tv.mjs` 没模拟到真实结构。先用 `doctor` 找到失效项，再用本机临时脚本读出相关对象的结构（只读类型、键名和数量，不读内容；脚本不提交，工具运行时仍只执行随版本固定的页面脚本），把假数据改成真实结构、看测试失败，再修页面脚本。2026-10-14 的 `studies.primitives` 误判就是这样：真实图表上，指标没画标签、线或框时，那里是一个空表，而假数据没有模拟。
 
 ## 桌面版升级后的修复流程

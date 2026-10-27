@@ -2,6 +2,21 @@
 
 本文件记录每个版本的变化，以及验证过的 TradingView 桌面版版本。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号用[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## 0.4.1 — 2026-10-27
+
+### 修复
+
+- MCP 工具遇到不认得的参数名时报 `INVALID_ARGUMENT`，消息与明细（`unknown`、`allowed`）写明它接受哪些参数。以前 MCP Python SDK 会把它丢掉、照默认值执行：`timeframe` 写成 `time_frame` 会悄悄采成日线，`required_studies` 写成 `required_study` 会跳过指标缺失与隐藏的检查，`parts` 写成 `partz` 会返回默认部分。命令行本来就拒绝不认得的选项，不受影响。
+
+### 依赖
+
+- 0.4.0 之后合并的 Dependabot 更新随本版发布：Pillow 13.0.0（`pyproject.toml` 放宽为 `pillow>=12.3,<14`），CI 的 `astral-sh/setup-uv` 10.3.0。
+
+### 已核对
+
+- 真实 stdio 客户端（MCP Python SDK 的 `stdio_client`）连本版服务：参数名正确照常返回；`symbol_data` 的 `partz` 与 `capture_start` 的 `time_frame` 都返回 `INVALID_ARGUMENT`，`capture_start` 没有建批次目录。
+- 只靠代码调用的使用方传的参数名都在允许范围内（例如固定传 `layout`、`symbols`、`output_dir`、`timeframe`、`required_studies`、`ready_timeout_sec` 的同步任务）。
+
 ## 0.4.0 — 2026-10-27
 
 对照 GitHub 上同类的 TradingView 桌面版 MCP（tradesdontlie/tradingview-mcp 与其派生、TradingView-Unified-MCP、tvcontrol、tedorigawa001/TradingView-MCP、tradingview-desktop-mcp、pueschel88/Tradingview-MCP）和 TradingView-API 的图元解析，补上它们读到而本工具没读、或本工具读错的部分；只借鉴做法，没有复制代码。除 `inputs.text` 外都是新增字段，`schemaVersion` 仍为 1。
