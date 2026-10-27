@@ -31,7 +31,7 @@
 
 ### 已核对
 
-- TradingView 桌面版 3.4.1，只读探查：`getPanes()` 的窗格高度与收起状态、时间轴的严格可见区间、`pro_name`，以及图元按 `force_overlay` 分组（当前布局只有 `false` 组）。公开的 `getVisibleBarsRange()` 把美股 4 小时 K 记在当天 00:00 UTC，与 `chart.csv` 差 13.5 小时，所以不用它。
+- TradingView 桌面版 3.4.1，只读探查：`getPanes()` 的窗格高度与收起状态、时间轴的严格可见区间、`pro_name`，以及图元按 `force_overlay` 分组（当前布局只有 `false` 组）。公开的 `getVisibleBarsRange()` 把美股日线记在当天 00:00 UTC，`chart.csv` 记的是开盘时间，差 13.5 小时，所以不用它。
 - 活体：`pytest -m live` 通过。4 小时图采 `NASDAQ:AAPL`（显示为 `BATS:AAPL`）、`BINANCE:BTCUSDT.P`、`KRX:005930`（显示为 `KRX_DLY:005930`），3/3 成功：`visibleBars` 首尾都在 `chart.csv` 里，`collapsedStudies` 列出布局里收起的那个窗格的指标，收尾恢复原品种。改动前同样的 `NASDAQ:AAPL` 报 `SYMBOL_NOT_FOUND`。
 
 ## 0.3.0 — 2026-10-15

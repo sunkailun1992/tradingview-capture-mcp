@@ -51,7 +51,7 @@ function bool(value) {
 
 // The first and last loaded bar on screen, as times in chart.csv. The time scale's strict range counts the empty
 // slots right of the last bar too, so it is clipped to the loaded bars. The public getVisibleBarsRange is not used:
-// it gives a stock's daily or 4h bar at 00:00 UTC of its date, not at the session time chart.csv holds.
+// it gives a stock's daily bar at 00:00 UTC of its date, not at the session open chart.csv holds.
 function visibleBars() {
   const range = attempt(() => model.model().timeScale().visibleBarsStrictRange());
   const first = range ? num(attempt(() => range.firstBar())) : null;
