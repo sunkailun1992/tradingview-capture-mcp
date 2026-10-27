@@ -516,7 +516,9 @@ def capture_symbol(
     before = ReadySnapshot.from_page(driver.run("ready"))
     switched = driver.run("switch", {"symbol": code, "timeframe": timeframe}, timeout=40.0) or {}
     after = switched.get("after") or {}
-    if switched.get("timedOut") or not same_symbol(str(after.get("symbol") or ""), code):
+    if switched.get("timedOut") or not same_symbol(
+        str(after.get("symbol") or ""), code, after.get("listedSymbol")
+    ):
         raise CaptureError(SYMBOL_NOT_FOUND, "the chart did not switch to this symbol", {"after": after})
     switched_at = stamp()
     reswitches = 0
@@ -524,7 +526,7 @@ def capture_symbol(
     def read() -> ReadySnapshot:
         nonlocal reswitches
         snapshot = ReadySnapshot.from_page(driver.run("ready"))
-        if not same_symbol(snapshot.symbol, code) and reswitches < MAX_RESWITCHES:
+        if not snapshot.shows(code) and reswitches < MAX_RESWITCHES:
             # The layout can put its own symbol back right after a switch; ask again.
             reswitches += 1
             driver.run("switch", {"symbol": code, "timeframe": timeframe}, timeout=40.0)
@@ -556,7 +558,8 @@ def capture_symbol(
         png = b""
     size = png_size(png)
     identity = extracted.get("identity") or {}
-    studies = extracted.get("studies") or []
+    view = extracted.get("view") or {}
+    studies = [_without_script_body(s) for s in extracted.get("studies") or []]
     series = extracted.get("series") or {}
     history = _history_record(request, *loaded, identity) if loaded is not None else None
     names = [str(s.get("name") or "") for s in studies]
@@ -593,7 +596,7 @@ def capture_symbol(
                 f"the self-check failed on {code}",
                 {"failedChecks": failed, "missingStudies": missing},
             )
-    if not same_symbol(str(identity.get("symbol") or ""), code):
+    if not same_symbol(str(identity.get("symbol") or ""), code, identity.get("listedSymbol")):
         raise CaptureError(
             SYMBOL_NOT_FOUND, "the extracted chart is not this symbol", {"symbol": identity.get("symbol")}
         )
@@ -623,11 +626,13 @@ def capture_symbol(
         "unchangedAfterSwitch": list(verdict.unchanged),
         "digestMovingAtRead": list(verdict.moving),
     }
+    image = {"pixelRatio": view.get("pixelRatio"), "collapsedStudies": collapsed_studies(view, studies)}
     try:
         csv_bytes = str(series.get("csv") or "").encode("utf-8")
         data = {
             "schemaVersion": 1,
             "identity": identity,
+            "view": view,
             "studies": studies,
             "drawings": extracted.get("drawings") or [],
             "readiness": {
@@ -676,6 +681,7 @@ def capture_symbol(
             "symbol": code,
             "resolvedSymbol": identity.get("symbol"),
             "readiness": evidence,
+            "image": image,
             **({"history": history} if history is not None else {}),
             "layout": request.layout,
             "timeframe": request.timeframe,
@@ -702,11 +708,36 @@ def capture_symbol(
         "status": "ok",
         "resolvedSymbol": identity.get("symbol"),
         "readiness": evidence,
+        "image": image,
         **({"history": history} if history is not None else {}),
         "attempt": attempt,
         "captureSha256": capture_sha,
         "finishedAt": finished_at,
     }
+
+
+def _without_script_body(study: dict[str, Any]) -> dict[str, Any]:
+    """TradingView keeps a script's encoded body among its inputs as `text`, tens of kilobytes that say
+    nothing about the chart; its SHA256 and size still tell when the script changed."""
+    inputs = study.get("inputs")
+    if not isinstance(inputs, dict) or not isinstance(inputs.get("text"), str):
+        return study
+    body = inputs["text"].encode("utf-8")
+    return {**study, "inputs": {**inputs, "text": {"sha256": sha256_bytes(body), "bytes": len(body)}}}
+
+
+def collapsed_studies(view: dict[str, Any], studies: list[dict[str, Any]]) -> list[str]:
+    """Names of the studies whose own pane is missing from image.png: collapsed to its title row, or hidden
+    because another pane is maximized. Their data is complete; plots with forceOverlay still draw on the main
+    chart."""
+    panes = [pane for pane in view.get("panes") or [] if isinstance(pane, dict)]
+    maximized = any(pane.get("maximized") is True for pane in panes)
+    hidden = {
+        pane.get("index")
+        for pane in panes
+        if pane.get("collapsed") is True or (maximized and pane.get("maximized") is not True)
+    }
+    return [str(s.get("name") or "") for s in studies if s.get("pane") in hidden]
 
 
 def _load_history(

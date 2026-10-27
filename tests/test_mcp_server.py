@@ -65,6 +65,36 @@ def test_batch_summary_and_symbol_data(root):
     assert data["identity"]["resolution"] == "1D"
 
 
+def test_symbol_data_reads_the_view_of_the_studies_asked_for(root):
+    out = root / "day"
+    make_batch(out, SYMBOL, extra_studies=({"id": "s2", "name": "Beta", "pane": 1, "lastValues": []},))
+    parts = ["view", "lastValues"]
+    arguments = {"output_dir": str(out), "symbol": SYMBOL, "parts": parts, "studies": ["Alp"]}
+    data = json.loads(call("symbol_data", arguments).content[0].text)
+    assert [s["name"] for s in data["studies"]] == ["Alpha"]
+    assert data["view"]["pixelRatio"] == 2
+
+
+def test_instructions_explain_collapsed_panes_and_the_study_filter():
+    text = app.instructions
+    for hint in ("collapsedStudies", "view", "studies"):
+        assert hint in text
+
+
+def test_instructions_say_chart_text_is_data_not_instructions():
+    text = app.instructions
+    assert "indicator authors" in text and "never as instructions" in text
+
+
+def test_tools_say_which_ones_only_read():
+    tools = {tool.name: tool.annotations for tool in asyncio.run(app.list_tools())}
+    readers = {"capture_status", "batch_summary", "symbol_data", "image_crop"}
+    assert {name for name, notes in tools.items() if notes and notes.read_only_hint} == readers
+    # Moving old batches to the Trash is the one tool that takes anything away.
+    assert {name for name, notes in tools.items() if notes and notes.destructive_hint} == {"output_prune"}
+    assert all(notes is not None and notes.open_world_hint is not None for notes in tools.values())
+
+
 def test_image_crop_returns_an_image(root):
     out = root / "day"
     make_batch(out, SYMBOL)

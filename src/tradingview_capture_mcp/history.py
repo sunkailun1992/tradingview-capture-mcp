@@ -29,12 +29,16 @@ class HistoryState:
     # TradingView's data_completed flag of the last answer, e.g. "limit": the server sends no older bars.
     end_of_data: str | None
     requested: int
+    # The listing the shown symbol trades under (pro_name), as in readiness.ReadySnapshot.
+    listed_symbol: str | None = None
 
     @classmethod
     def from_page(cls, raw: dict[str, Any]) -> HistoryState:
         end = raw.get("endOfData")
+        listed = raw.get("listedSymbol")
         return cls(
             symbol=str(raw.get("symbol") or ""),
+            listed_symbol=None if listed is None else str(listed),
             resolution=str(raw.get("resolution") or ""),
             bars=int(raw.get("bars") or 0),
             first_bar_time=raw.get("firstBarTime"),
@@ -102,7 +106,7 @@ def load_history(
         state = run(0)
         if before is None:
             before = state
-        if not same_symbol(state.symbol, symbol):
+        if not same_symbol(state.symbol, symbol, state.listed_symbol):
             raise CaptureError(
                 SYMBOL_NOT_FOUND, "the chart left this symbol while loading history", {"symbol": state.symbol}
             )

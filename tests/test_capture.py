@@ -188,6 +188,68 @@ def test_the_manifest_and_capture_json_carry_the_readiness_evidence(config):
     assert record["readiness"] == entries[SYMBOLS[1]]["readiness"]
 
 
+def test_studies_in_a_collapsed_pane_are_named_next_to_the_image(config):
+    # Their data is exported as usual, but their own pane shows only its title row in image.png.
+    capture(config, make_request(config), FakeChart(second_pane=("Beta",), collapsed_panes=(1,)))
+    out = config.output_root / "batch"
+    folder = out / "raw" / safe_name(SYMBOLS[0])
+    record = read_json(folder / "capture.json")
+    assert record["image"] == {"pixelRatio": 2, "collapsedStudies": ["Beta"]}
+    entry = read_json(out / "capture-manifest.json")["symbols"][0]
+    assert entry["image"] == record["image"]
+    view = read_json(folder / "data.json")["view"]
+    assert [(p["index"], p["collapsed"]) for p in view["panes"]] == [(0, False), (1, True)]
+    assert view["timezone"] == "Etc/UTC"
+
+
+def test_a_maximized_pane_hides_the_studies_of_the_other_panes(config):
+    capture(config, make_request(config), FakeChart(second_pane=("Beta",), maximized_pane=1))
+    record = read_json(config.output_root / "batch" / "raw" / safe_name(SYMBOLS[0]) / "capture.json")
+    assert record["image"]["collapsedStudies"] == ["Alpha"]
+
+
+def test_with_every_pane_shown_no_study_is_named(config):
+    capture(config, make_request(config), FakeChart(second_pane=("Beta",)))
+    record = read_json(config.output_root / "batch" / "raw" / safe_name(SYMBOLS[0]) / "capture.json")
+    assert record["image"] == {"pixelRatio": 2, "collapsedStudies": []}
+
+
+def test_a_symbol_the_chart_shows_under_its_feed_is_accepted_by_its_listing(config):
+    # Without the exchange's own real-time data the chart shows the feed (BATS:AAPL); pro_name keeps the
+    # listing.
+    chart = FakeChart(resolves={"NASDAQ:AAPL": "BATS:AAPL"}, listed={"BATS:AAPL": "NASDAQ:AAPL"})
+    summary, _, _ = capture(config, make_request(config, symbols=("NASDAQ:AAPL",)), chart)
+    assert summary["totals"]["succeeded"] == 1, summary
+    out = config.output_root / "batch"
+    assert read_json(out / "capture-manifest.json")["symbols"][0]["resolvedSymbol"] == "BATS:AAPL"
+    identity = read_json(out / "raw" / safe_name("NASDAQ:AAPL") / "data.json")["identity"]
+    assert identity["listedSymbol"] == "NASDAQ:AAPL"
+
+
+def test_history_loads_for_a_symbol_shown_under_its_feed(config):
+    chart = FakeChart(resolves={"NASDAQ:AAPL": "BATS:AAPL"}, listed={"BATS:AAPL": "NASDAQ:AAPL"})
+    request = make_request(config, symbols=("NASDAQ:AAPL",), history_from=HISTORY_FROM)
+    summary, _, _ = capture(config, request, chart)
+    assert summary["totals"]["succeeded"] == 1, summary
+
+
+def test_another_listing_is_still_another_symbol(config):
+    chart = FakeChart(resolves={"NASDAQ:AAPL": "BATS:MSFT"}, listed={"BATS:MSFT": "NASDAQ:MSFT"})
+    summary, _, _ = capture(config, make_request(config, symbols=("NASDAQ:AAPL",)), chart)
+    assert summary["failures"][0]["code"] == "SYMBOL_NOT_FOUND"
+
+
+def test_the_script_body_among_the_inputs_is_kept_as_its_digest(config):
+    capture(config, make_request(config))
+    data = read_json(config.output_root / "batch" / "raw" / safe_name(SYMBOLS[0]) / "data.json")
+    inputs = data["studies"][0]["inputs"]
+    assert inputs == {
+        "length": 14,
+        "text": {"sha256": sha256_bytes(b"QUJDAlpha"), "bytes": 9},
+        "pineId": "PUB;0001",
+    }
+
+
 def test_the_restored_chart_may_rename_its_symbol_while_it_loads(config):
     chart = FakeChart(start_alias=("SSE:000001", 3))
     summary, _, _ = capture(config, make_request(config), chart)

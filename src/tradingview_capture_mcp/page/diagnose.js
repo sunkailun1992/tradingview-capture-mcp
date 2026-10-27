@@ -19,11 +19,18 @@ function primitiveCount(all, collection) {
   if (!all || !all[collection] || typeof all[collection].get !== 'function') return 'broken';
   const outer = all[collection].get(PRIMITIVE_KEYS[collection]);
   if (!outer) return null;
-  const inner = typeof outer.get === 'function' ? outer.get(false) || outer : outer;
-  const byId = inner && inner._primitivesDataById;
-  if (byId && typeof byId.size === 'number') return byId.size;
-  // Labels, lines and boxes sit in a map keyed by false that stays empty while a study draws none of them.
-  return inner && inner.size === 0 && typeof inner.keys === 'function' ? null : 'broken';
+  if (outer._primitivesDataById && typeof outer._primitivesDataById.size === 'number') return outer._primitivesDataById.size;
+  if (typeof outer.forEach !== 'function' || typeof outer.size !== 'number') return 'broken';
+  // Labels, lines and boxes sit in a map keyed by force_overlay that stays empty while a study draws none of them.
+  if (outer.size === 0) return null;
+  let count = 0;
+  let broken = false;
+  outer.forEach((inner) => {
+    const byId = inner && inner._primitivesDataById;
+    if (byId && typeof byId.size === 'number') count += byId.size;
+    else broken = true;
+  });
+  return broken ? 'broken' : count;
 }
 let chart = null;
 let model = null;

@@ -52,6 +52,13 @@ def test_same_symbol_accepts_delayed_feeds(actual, requested, expected):
     assert same_symbol(actual, requested) is expected
 
 
+def test_same_symbol_accepts_the_listing_a_feed_serves():
+    assert same_symbol("BATS:AAPL", "NASDAQ:AAPL", listed="NASDAQ:AAPL") is True
+    assert same_symbol("BATS:AAPL", "NASDAQ:AAPL") is False
+    assert same_symbol("BATS:MSFT", "NASDAQ:AAPL", listed="NASDAQ:MSFT") is False
+    assert same_symbol("", "NASDAQ:AAPL", listed="NASDAQ:AAPL") is False
+
+
 @pytest.mark.parametrize(
     "value, expected",
     [("2019-01-02", 1546387200), ("1970-01-01", 0), ("1800-01-01", -5364662400), ("2024-02-29", 1709164800)],

@@ -16,4 +16,7 @@ const studies = orderedStudies().map((source) => {
     digest: JSON.stringify([row ? row.slice(1) : null, cells, labels]),
   };
 });
-return { symbol: chart.symbol(), resolution: chart.resolution(), lastBarTime: lastBar ? lastBar[0] : null, studies };
+return {
+  symbol: chart.symbol(), listedSymbol: listedSymbol(), resolution: chart.resolution(),
+  lastBarTime: lastBar ? lastBar[0] : null, studies,
+};
