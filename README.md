@@ -106,7 +106,7 @@ uv run tradingview-capture read --output-dir ~/tradingview-captures/2026-10-14 \
 
 MCP 工具带标注：`capture_status`、`batch_summary`、`symbol_data`、`image_crop` 只读；`capture_start`、`capture_retry`、`diagnose` 会启动 TradingView 并连它的服务器；`output_prune` 会把文件移到废纸篓。
 
-错误一律带固定的错误码，例如 `TV_ALREADY_RUNNING`（桌面版已开着）、`LAYOUT_NOT_FOUND`（桌面版开了却没有标签页显示这个布局：多半是启动时网络断了，或布局 ID 不对；明细里 `chartPages` 是显示别的布局的标签页数）、`TV_INTERNALS_CHANGED`（桌面版升级后内部结构变了）、`STUDY_MISSING`（布局里没有要求的指标）、`STUDY_HIDDEN`（要求的指标在布局里被隐藏）、`NOT_READY_TIMEOUT`（某品种迟迟没加载完，载入历史没完成时明细里 `reason` 为 `history`）、`TRASH_UNAVAILABLE`（系统没有 `/usr/bin/trash`，清理什么都没动）。
+参数名打错时，MCP 工具报 `INVALID_ARGUMENT` 并在明细里列出它接受的参数（`unknown`、`allowed`），不会悄悄照默认值执行。错误一律带固定的错误码，例如 `TV_ALREADY_RUNNING`（桌面版已开着）、`LAYOUT_NOT_FOUND`（桌面版开了却没有标签页显示这个布局：多半是启动时网络断了，或布局 ID 不对；明细里 `chartPages` 是显示别的布局的标签页数）、`TV_INTERNALS_CHANGED`（桌面版升级后内部结构变了）、`STUDY_MISSING`（布局里没有要求的指标）、`STUDY_HIDDEN`（要求的指标在布局里被隐藏）、`NOT_READY_TIMEOUT`（某品种迟迟没加载完，载入历史没完成时明细里 `reason` 为 `history`）、`TRASH_UNAVAILABLE`（系统没有 `/usr/bin/trash`，清理什么都没动）。
 
 ### 载入历史（history_from）
 

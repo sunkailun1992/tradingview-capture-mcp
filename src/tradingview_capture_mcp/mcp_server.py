@@ -14,7 +14,7 @@ from mcp.types import ToolAnnotations
 from . import __version__, diagnostics, jobs, prune, results
 from .capture import CaptureRequest
 from .config import load_config
-from .errors import CaptureError
+from .errors import INVALID_ARGUMENT, CaptureError
 from .signals import install_server_handlers
 
 INSTRUCTIONS = (
@@ -71,7 +71,27 @@ PRUNES = ToolAnnotations(
     read_only_hint=False, destructive_hint=True, idempotent_hint=True, open_world_hint=False
 )
 
-app = MCPServer(name="tradingview-capture", version=__version__, instructions=INSTRUCTIONS)
+
+class _StrictServer(MCPServer):
+    """Refuses argument names a tool does not take. The SDK drops them and runs the tool on its defaults, so a
+    misspelled timeframe would capture 1D and a misspelled required_studies would skip the study checks."""
+
+    async def call_tool(self, name: str, arguments: dict[str, Any], context: Any = None) -> Any:
+        schemas = {tool.name: tool.input_schema for tool in await self.list_tools()}
+        if name in schemas:
+            allowed = list((schemas[name] or {}).get("properties") or {})
+            unknown = sorted(set(arguments or {}) - set(allowed))
+            if unknown:
+                error = CaptureError(
+                    INVALID_ARGUMENT,
+                    f"{name} takes no parameter named {', '.join(unknown)}; it takes {', '.join(allowed)}",
+                    {"unknown": unknown, "allowed": allowed},
+                )
+                raise ToolError(json.dumps(error.to_dict(), ensure_ascii=False))
+        return await super().call_tool(name, arguments, context)
+
+
+app = _StrictServer(name="tradingview-capture", version=__version__, instructions=INSTRUCTIONS)
 
 
 def _coded[F: Callable[..., Any]](fn: F) -> F:

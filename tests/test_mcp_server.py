@@ -113,6 +113,41 @@ def test_errors_carry_the_code(root):
     assert "NOT_FOUND" in str(err.value)
 
 
+def test_an_argument_name_the_tool_does_not_take_is_refused(root):
+    # The SDK would drop it and run the tool on its defaults; say which names the tool takes instead.
+    out = root / "day"
+    make_batch(out, SYMBOL)
+    with pytest.raises(ToolError) as err:
+        call("symbol_data", {"output_dir": str(out), "symbol": SYMBOL, "partz": ["view"]})
+    error = json.loads(str(err.value))
+    assert error["code"] == "INVALID_ARGUMENT"
+    assert error["detail"] == {
+        "unknown": ["partz"],
+        "allowed": ["output_dir", "symbol", "parts", "series_last", "studies"],
+    }
+    assert "partz" in error["message"] and "parts" in error["message"]
+
+
+def test_a_misspelled_capture_argument_starts_nothing(root, monkeypatch):
+    # time_frame for timeframe would otherwise capture the default 1D, and required_study would skip the
+    # study checks.
+    started = []
+    monkeypatch.setattr(jobs, "start", lambda config, request: started.append(request) or {"jobId": "j"})
+    arguments = {"layout": "Layout01", "symbols": [SYMBOL], "output_dir": str(root / "x")}
+    for typo in ({"time_frame": "240"}, {"required_study": ["Alpha"]}):
+        with pytest.raises(ToolError) as err:
+            call("capture_start", {**arguments, **typo})
+        assert json.loads(str(err.value))["detail"]["unknown"] == list(typo)
+    assert started == []
+
+
+def test_every_tool_checks_its_argument_names(root):
+    for tool in asyncio.run(app.list_tools()):
+        with pytest.raises(ToolError) as err:
+            call(tool.name, {"not_a_parameter": 1})
+        assert json.loads(str(err.value))["code"] == "INVALID_ARGUMENT", tool.name
+
+
 def test_instructions_state_the_export_only_boundary():
     text = app.instructions
     assert "never uploads" in text
