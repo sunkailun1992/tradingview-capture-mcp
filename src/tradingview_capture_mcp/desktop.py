@@ -6,6 +6,7 @@ import os
 import re
 import subprocess
 import time
+import urllib.error
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -140,22 +141,61 @@ def wait_for_chart_page(
     """Wait until the restored tab for `layout` is listed, then return its DevTools target."""
     deadline = time.monotonic() + timeout
     targets: list[dict[str, Any]] | None = None
+    observation: dict[str, Any] = {
+        "polls": 0,
+        "targetListReads": 0,
+        "targetListErrors": {},
+        "pageCounts": [],
+        "chartPageCounts": [],
+        "countsTruncated": False,
+    }
     while True:
+        observation["polls"] += 1
         try:
             listed = cdp.http_json(port, "/json/list")
             targets = listed
+            observation["targetListReads"] += 1
+            pages = [t for t in listed if isinstance(t, dict) and t.get("type") == "page"]
+            counts = {
+                "pageCounts": len(pages),
+                "chartPageCounts": sum("/chart/" in str(t.get("url", "")) for t in pages),
+            }
+            # Only bounded counts survive a failure; target IDs, URLs and contents never do.
+            for name, count in counts.items():
+                if count not in observation[name]:
+                    if len(observation[name]) < 8:
+                        observation[name].append(count)
+                    else:
+                        observation["countsTruncated"] = True
             return cdp.select_chart_page(listed, layout)
         except CaptureError as exc:
             if exc.code != LAYOUT_NOT_FOUND:
                 raise
-        except (OSError, ValueError):
-            pass
+        except (OSError, ValueError) as exc:
+            if isinstance(exc, urllib.error.HTTPError):
+                kind = "http"
+            elif isinstance(exc, TimeoutError) or (
+                isinstance(exc, urllib.error.URLError) and isinstance(exc.reason, TimeoutError)
+            ):
+                kind = "timeout"
+            elif isinstance(exc, ValueError):
+                kind = "invalidResponse"
+            else:
+                kind = "transport"
+            errors = observation["targetListErrors"]
+            errors[kind] = errors.get(kind, 0) + 1
         if time.monotonic() >= deadline:
-            raise layout_not_found(layout, targets, timeout)
+            raise layout_not_found(layout, targets, timeout, target_observation=observation)
         time.sleep(poll)
 
 
-def layout_not_found(layout: str, targets: list[dict[str, Any]] | None, timeout: float) -> CaptureError:
+def layout_not_found(
+    layout: str,
+    targets: list[dict[str, Any]] | None,
+    timeout: float,
+    *,
+    target_observation: dict[str, Any] | None = None,
+) -> CaptureError:
     """The error for a layout no tab showed in time; it says what the tabs were and what to do."""
     pages = [t for t in targets or [] if isinstance(t, dict) and t.get("type") == "page"]
     detail = {
@@ -166,6 +206,8 @@ def layout_not_found(layout: str, targets: list[dict[str, Any]] | None, timeout:
         # Tabs that show some other layout: a wrong layout ID, or one the account does not have.
         "chartPages": sum(1 for t in pages if "/chart/" in str(t.get("url", ""))),
     }
+    if target_observation is not None:
+        detail["targetObservation"] = target_observation
     if targets is None:
         return CaptureError(
             LAYOUT_NOT_FOUND, f"the DevTools target list never loaded within {timeout:g}s; try again", detail

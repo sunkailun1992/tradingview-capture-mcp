@@ -1,7 +1,9 @@
+import json
 import socket
 import stat
 import subprocess
 import sys
+import urllib.error
 from pathlib import Path
 
 import pytest
@@ -176,6 +178,14 @@ def test_a_layout_no_tab_shows_says_what_the_tabs_were_and_what_to_do(monkeypatc
         "targetList": True,
         "pages": 2,
         "chartPages": 1,
+        "targetObservation": {
+            "polls": 1,
+            "targetListReads": 1,
+            "targetListErrors": {},
+            "pageCounts": [2],
+            "chartPageCounts": [1],
+            "countsTruncated": False,
+        },
     }
     for hint in ("network", "layout ID", "capture_retry"):
         assert hint in err.value.message
@@ -190,3 +200,137 @@ def test_a_target_list_that_never_loads_is_reported_as_such(monkeypatch):
         desktop.wait_for_chart_page(9333, "AbCd1234", timeout=0)
     assert (err.value.code, err.value.detail["targetList"]) == ("LAYOUT_NOT_FOUND", False)
     assert "target list" in err.value.message
+
+
+@pytest.fixture
+def chart_page_clock(monkeypatch):
+    class Clock:
+        value = 0.0
+
+        def now(self):
+            return self.value
+
+        def sleep(self, seconds):
+            self.value += seconds
+
+    clock = Clock()
+    monkeypatch.setattr(desktop.time, "monotonic", clock.now)
+    monkeypatch.setattr(desktop.time, "sleep", clock.sleep)
+    return clock
+
+
+def test_stalled_other_layout_records_counts_without_navigation_or_private_data(
+    monkeypatch, chart_page_clock
+):
+    targets = [
+        {
+            "type": "page",
+            "id": "target-id-marker",
+            "url": "https://www.tradingview.com/chart/Other999/?token=secret-marker",
+            "webSocketDebuggerUrl": "ws://secret-marker",
+        },
+        {"type": "page", "url": "file:///app/window/index.html"},
+        {"type": "worker", "url": "https://www.tradingview.com/chart/AbCd1234/"},
+    ]
+    monkeypatch.setattr(desktop.cdp, "http_json", lambda port, path, timeout=3.0: targets)
+    with pytest.raises(CaptureError) as err:
+        desktop.wait_for_chart_page(9333, "AbCd1234", timeout=3)
+    assert chart_page_clock.value == 3
+    assert err.value.code == "LAYOUT_NOT_FOUND"
+    observation = err.value.detail["targetObservation"]
+    assert observation == {
+        "polls": 4,
+        "targetListReads": 4,
+        "targetListErrors": {},
+        "pageCounts": [2],
+        "chartPageCounts": [1],
+        "countsTruncated": False,
+    }
+    encoded = json.dumps(observation)
+    for private in ("AbCd1234", "Other999", "secret-marker", "target-id-marker", "https:", "ws:"):
+        assert private not in encoded
+
+
+def test_target_list_failures_are_classified_without_raw_error_text(monkeypatch, chart_page_clock):
+    secret = "https://private.invalid/chart/Other999/?token=secret-marker"
+    http_error = urllib.error.HTTPError(secret, 503, secret, {}, None)
+    http_error.close()
+    answers = iter(
+        [
+            http_error,
+            urllib.error.URLError(TimeoutError(secret)),
+            json.JSONDecodeError(secret, secret, 0),
+            OSError(secret),
+            [],
+            [{"type": "page", "url": "https://www.tradingview.com/chart/Other999/"}],
+        ]
+    )
+
+    def read(port, path, timeout=3.0):
+        answer = next(answers)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    monkeypatch.setattr(desktop.cdp, "http_json", read)
+    with pytest.raises(CaptureError) as err:
+        desktop.wait_for_chart_page(9333, "AbCd1234", timeout=5)
+    assert chart_page_clock.value == 5
+    assert err.value.detail["targetList"] is True
+    observation = err.value.detail["targetObservation"]
+    assert observation == {
+        "polls": 6,
+        "targetListReads": 2,
+        "targetListErrors": {"http": 1, "timeout": 1, "invalidResponse": 1, "transport": 1},
+        "pageCounts": [0, 1],
+        "chartPageCounts": [0, 1],
+        "countsTruncated": False,
+    }
+    assert secret not in json.dumps(observation)
+    assert "secret-marker" not in json.dumps(observation)
+
+
+def test_target_observation_bounds_distinct_counts(monkeypatch, chart_page_clock):
+    counts = iter(range(11))
+
+    def read(port, path, timeout=3.0):
+        return [
+            {"type": "page", "url": "https://www.tradingview.com/chart/Other999/"}
+            for _ in range(next(counts))
+        ]
+
+    monkeypatch.setattr(desktop.cdp, "http_json", read)
+    with pytest.raises(CaptureError) as err:
+        desktop.wait_for_chart_page(9333, "AbCd1234", timeout=10)
+    observation = err.value.detail["targetObservation"]
+    assert observation["polls"] == observation["targetListReads"] == 11
+    assert observation["pageCounts"] == observation["chartPageCounts"] == [0, 1, 2, 3, 4, 5, 6, 7]
+    assert observation["countsTruncated"] is True
+
+
+def test_target_appearing_after_list_failure_still_succeeds(monkeypatch, chart_page_clock):
+    target = {
+        "type": "page",
+        "url": "https://www.tradingview.com/chart/AbCd1234/",
+        "webSocketDebuggerUrl": "ws://synthetic-target",
+    }
+    answers = iter([TimeoutError("not retained"), [], [target]])
+
+    def read(port, path, timeout=3.0):
+        answer = next(answers)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    monkeypatch.setattr(desktop.cdp, "http_json", read)
+    assert desktop.wait_for_chart_page(9333, "AbCd1234", timeout=3) is target
+    assert chart_page_clock.value == 2
+
+
+def test_ambiguous_layout_is_still_rejected_without_waiting(monkeypatch, chart_page_clock):
+    targets = [{"type": "page", "url": "https://www.tradingview.com/chart/AbCd1234/"}] * 2
+    monkeypatch.setattr(desktop.cdp, "http_json", lambda port, path, timeout=3.0: targets)
+    with pytest.raises(CaptureError) as err:
+        desktop.wait_for_chart_page(9333, "AbCd1234", timeout=3)
+    assert err.value.code == "LAYOUT_NOT_UNIQUE"
+    assert chart_page_clock.value == 0

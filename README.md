@@ -108,6 +108,8 @@ MCP 工具带标注：`capture_status`、`batch_summary`、`symbol_data`、`imag
 
 参数名打错时，MCP 工具报 `INVALID_ARGUMENT` 并在明细里列出它接受的参数（`unknown`、`allowed`），不会悄悄照默认值执行。错误一律带固定的错误码，例如 `TV_ALREADY_RUNNING`（桌面版已开着）、`LAYOUT_NOT_FOUND`（桌面版开了却没有标签页显示这个布局：多半是启动时网络断了，或布局 ID 不对；明细里 `chartPages` 是显示别的布局的标签页数）、`TV_INTERNALS_CHANGED`（桌面版升级后内部结构变了）、`STUDY_MISSING`（抽取结果在等待期限内始终没有读齐必要指标）、`STUDY_HIDDEN`（要求的指标在布局里被隐藏）、`NOT_READY_TIMEOUT`（某品种迟迟没加载完，载入历史没完成时明细里 `reason` 为 `history`）、`TRASH_UNAVAILABLE`（系统没有 `/usr/bin/trash`，清理什么都没动）。
 
+`LAYOUT_NOT_FOUND` 的 `targetObservation` 只记录有界的轮询次数、成功读取目标列表的次数、读取错误分类及页数变化，不含页面 URL、目标 ID 或内容。`chartPageCounts` 持续不变只能证明当时目标布局没有出现在列表里，不能证明布局被删除；也可能是桌面版在恢复前面的其他页签时停滞。工具仍按原期限停止，不选择其他布局代替。
+
 ### 载入历史（history_from）
 
 图表切到一个品种时只载入最近一段 K 线（1 小时图约 300 根）。要更长的历史时，`capture_start` 传 `history_from`（命令行 `--history-from`），写成 `YYYY-MM-DD`：
