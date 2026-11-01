@@ -87,8 +87,9 @@ def judge(
     before_switch: ReadySnapshot | None,
     elapsed: float,
     grace_sec: float = 10.0,
+    required_studies: tuple[str, ...] = (),
 ) -> ReadyVerdict:
-    """Ready means: right symbol and resolution, every study finished on the last bar, two equal reads,
+    """Ready means: right symbol and resolution, required studies present, all finished, two equal reads,
     and the studies' output differs from the previous symbol's (or the grace period has passed)."""
     if not current.shows(target):
         return ReadyVerdict(False, "symbol")
@@ -96,6 +97,9 @@ def judge(
         return ReadyVerdict(False, "resolution")
     if current.last_bar_time is None:
         return ReadyVerdict(False, "bars")
+    for name in required_studies:
+        if not any(name in study.name for study in current.studies):
+            return ReadyVerdict(False, f"missing:{name}")
     for study in current.studies:
         if study.status is not None and study.status != STATUS_COMPLETED:
             return ReadyVerdict(False, f"status:{study.name}")
@@ -125,6 +129,7 @@ def wait_until_ready(
     clock: Callable[[], float],
     interval: float = 1.0,
     grace_sec: float = 10.0,
+    required_studies: tuple[str, ...] = (),
 ) -> tuple[ReadyVerdict, ReadySnapshot, int, float]:
     start = clock()
     previous: ReadySnapshot | None = None
@@ -141,14 +146,15 @@ def wait_until_ready(
             before_switch=before_switch,
             elapsed=elapsed,
             grace_sec=grace_sec,
+            required_studies=required_studies,
         )
-        if verdict.ready:
+        if verdict.ready and elapsed <= timeout:
             return verdict, current, polls, elapsed
         if elapsed >= timeout:
             raise CaptureError(
                 NOT_READY_TIMEOUT,
                 f"the chart was not ready after {timeout:g}s",
-                {"reason": verdict.reason, "polls": polls, "symbol": current.symbol},
+                {"reason": verdict.reason or "deadline", "polls": polls, "symbol": current.symbol},
             )
         previous = current
-        sleep(interval)
+        sleep(min(interval, timeout - elapsed))

@@ -26,10 +26,10 @@
   - `chart.csv`：列名、列序和数字写法与 TradingView 的"下载图表数据"一致；
   - `data.json`：指标画出的表格（逐格原文与颜色）、标签、线、框、绘图端点与档位，每条曲线的样式、最后值和最后一个有效值，逐根 K 的颜色（曲线、填色、K 线、背景），填色带与水平线，以及工具没能导出的部分（`notExported`）；
   - `capture.json`：各步时间、文件 SHA256、工具与桌面版版本，以及就绪证据和截图证据（`image`）。
-- 切换后等图表真正就绪才读：指标算完、相邻两次读取的结构一致、输出和上一个品种不同。就绪证据（等了多久、是否重新切换、哪些指标读取时仍在跳动、哪些和上一个品种相同）写进 `data.json`，供调用方核对。
+- 切换后等图表真正就绪才读：要求的指标全部出现并算完、相邻两次读取的结构一致、输出和上一个品种不同。就绪证据（等了多久、是否重新切换、哪些指标读取时仍在跳动、哪些和上一个品种相同）写进 `data.json`，供调用方核对。
 - 要多年历史时（例如校准要的 1 小时 K 线从 2019 年起），传 `history_from`：每个品种就绪后先把历史载入到那一天（或 TradingView 给得到的最早一根），再照常读取，`chart.csv` 里就是全部载入的 K 线。不传时行为和输出与以前完全一样。
 - 采集在后台进程里跑，过程中不消耗代理的 token；代理只发起采集、读结果。
-- 布局里要求的指标缺了（`STUDY_MISSING`）或被隐藏了（`STUDY_HIDDEN`，图例上的眼睛被关掉）都会当场停下，不会产出缺一块的数据。
+- 必要指标尚未出现在就绪清单时会继续等待；读取时短暂空白或缺少部分必要指标，会重新确认就绪并重读。初次等待与重读共用一个 `ready_timeout_sec`，载入历史后则使用该历史步骤剩余的等待时间，不会因重读重置期限。期限内始终未读齐时失败（就绪阶段为 `NOT_READY_TIMEOUT`，抽取阶段为 `STUDY_MISSING`）；要求的指标被隐藏仍报 `STUDY_HIDDEN`。这些失败都不会产出该品种的原始文件，也不表示指标已被用户删除。
 - 截图里有什么也写清楚：`data.json` 的 `view` 记下各窗格的高度、是否收起或最大化、屏幕上的 K 线范围、时间轴时区和像素比；指标所在的窗格被收起时，它的名字出现在 manifest 和 `capture.json` 的 `image.collapsedStudies` 里——数据照常导出，截图里却没有那个窗格，调用方不必对照截图才发现。
 - 只保留当天的批次：`output_prune` 列出今天以前的批次，加 `apply` 时把它们移到废纸篓，从不永久删除。
 
@@ -106,7 +106,7 @@ uv run tradingview-capture read --output-dir ~/tradingview-captures/2026-10-14 \
 
 MCP 工具带标注：`capture_status`、`batch_summary`、`symbol_data`、`image_crop` 只读；`capture_start`、`capture_retry`、`diagnose` 会启动 TradingView 并连它的服务器；`output_prune` 会把文件移到废纸篓。
 
-参数名打错时，MCP 工具报 `INVALID_ARGUMENT` 并在明细里列出它接受的参数（`unknown`、`allowed`），不会悄悄照默认值执行。错误一律带固定的错误码，例如 `TV_ALREADY_RUNNING`（桌面版已开着）、`LAYOUT_NOT_FOUND`（桌面版开了却没有标签页显示这个布局：多半是启动时网络断了，或布局 ID 不对；明细里 `chartPages` 是显示别的布局的标签页数）、`TV_INTERNALS_CHANGED`（桌面版升级后内部结构变了）、`STUDY_MISSING`（布局里没有要求的指标）、`STUDY_HIDDEN`（要求的指标在布局里被隐藏）、`NOT_READY_TIMEOUT`（某品种迟迟没加载完，载入历史没完成时明细里 `reason` 为 `history`）、`TRASH_UNAVAILABLE`（系统没有 `/usr/bin/trash`，清理什么都没动）。
+参数名打错时，MCP 工具报 `INVALID_ARGUMENT` 并在明细里列出它接受的参数（`unknown`、`allowed`），不会悄悄照默认值执行。错误一律带固定的错误码，例如 `TV_ALREADY_RUNNING`（桌面版已开着）、`LAYOUT_NOT_FOUND`（桌面版开了却没有标签页显示这个布局：多半是启动时网络断了，或布局 ID 不对；明细里 `chartPages` 是显示别的布局的标签页数）、`TV_INTERNALS_CHANGED`（桌面版升级后内部结构变了）、`STUDY_MISSING`（抽取结果在等待期限内始终没有读齐必要指标）、`STUDY_HIDDEN`（要求的指标在布局里被隐藏）、`NOT_READY_TIMEOUT`（某品种迟迟没加载完，载入历史没完成时明细里 `reason` 为 `history`）、`TRASH_UNAVAILABLE`（系统没有 `/usr/bin/trash`，清理什么都没动）。
 
 ### 载入历史（history_from）
 

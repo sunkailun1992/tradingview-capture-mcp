@@ -585,3 +585,240 @@ def test_a_retry_loads_history_for_the_symbols_it_runs(config):
     summary, _, _ = capture(config, make_request(config, retry_failed=True, history_from=HISTORY_FROM), chart)
     assert summary["totals"]["succeeded"] == 3, summary
     assert history_of(config, SYMBOLS[1])["reached"] is True
+
+
+class TransientExtractionChart(FakeChart):
+    """Only the external extraction response flickers; the capture pipeline stays real."""
+
+    def __init__(self, *, incomplete_reads=1, partial=False, clock=None, extract_cost=0, **kwargs):
+        super().__init__(**kwargs)
+        self.incomplete_reads = incomplete_reads
+        self.partial = partial
+        self.extracts = 0
+        self.clock = clock
+        self.extract_cost = extract_cost
+
+    def _extract(self, args):
+        result = super()._extract(args)
+        self.extracts += 1
+        if self.clock is not None:
+            self.clock.sleep(self.extract_cost)
+        if self.extracts <= self.incomplete_reads:
+            result["studies"] = result["studies"][:1] if self.partial else []
+        return result
+
+
+@pytest.mark.parametrize("partial", [False, True])
+@pytest.mark.parametrize("history_from", [None, HISTORY_FROM])
+def test_transient_incomplete_extraction_is_rechecked_before_any_output(config, partial, history_from):
+    request = make_request(
+        config, symbols=SYMBOLS[:1], required_studies=("Alpha", "Beta"), history_from=history_from
+    )
+    chart = TransientExtractionChart(partial=partial)
+    summary, _, _ = capture(config, request, chart)
+    assert summary["totals"] == {"requested": 1, "succeeded": 1, "failed": 0, "pending": 0}
+    folder = config.output_root / "batch" / "raw" / safe_name(SYMBOLS[0])
+    data = read_json(folder / "data.json")
+    assert [s["name"] for s in data["studies"]] == ["Alpha", "Beta"]
+    assert len(list(folder.parent.iterdir())) == 1
+    assert data["readiness"]["polls"] >= 4
+
+
+def test_persistent_empty_extraction_uses_one_bounded_wait_and_writes_no_symbol(config):
+    clock = FakeClock()
+    chart = TransientExtractionChart(incomplete_reads=100, settle_polls=0)
+    request = make_request(config, symbols=SYMBOLS[:1], ready_timeout_sec=5)
+    summary = run_capture(
+        request, config, job_id="a" * 32, desktop=FakeDesktop(chart), sleep=clock.sleep, clock=clock
+    )
+    assert (summary["state"], summary["error"]["code"]) == ("stopped", "STUDY_MISSING")
+    assert summary["error"]["detail"]["missing"] == ["Alpha"]
+    assert summary["error"]["detail"]["found"] == []
+    assert clock.now == 6.0  # One second of startup, then the caller's five-second read budget.
+    assert list((config.output_root / "batch" / "raw").iterdir()) == []
+
+
+def test_slow_incomplete_extract_does_not_receive_a_fresh_retry_budget(config):
+    clock = FakeClock()
+    chart = TransientExtractionChart(incomplete_reads=2, settle_polls=0, clock=clock, extract_cost=3)
+    request = make_request(config, symbols=SYMBOLS[:1], ready_timeout_sec=5)
+    summary = run_capture(
+        request, config, job_id="a" * 32, desktop=FakeDesktop(chart), sleep=clock.sleep, clock=clock
+    )
+    assert (summary["state"], summary["error"]["code"]) == ("stopped", "STUDY_MISSING")
+    assert clock.now == 6.0  # A reset timeout would eventually accept the third, late extraction.
+    assert chart.extracts == 1
+    assert list((config.output_root / "batch" / "raw").iterdir()) == []
+
+
+def test_required_study_hidden_after_a_transient_empty_read_is_still_rejected(config):
+    chart = TransientExtractionChart(hidden_studies=("Alpha",))
+    summary, _, _ = capture(config, make_request(config, symbols=SYMBOLS[:1]), chart)
+    assert (summary["state"], summary["error"]["code"]) == ("stopped", "STUDY_HIDDEN")
+    assert list((config.output_root / "batch" / "raw").iterdir()) == []
+
+
+def test_wrong_extracted_symbol_is_not_hidden_by_an_incomplete_study_retry(config):
+    class WrongChart(TransientExtractionChart):
+        def _extract(self, args):
+            result = super()._extract(args)
+            result["identity"]["symbol"] = "BINANCE:OTHERUSDT.P"
+            result["identity"]["listedSymbol"] = "BINANCE:OTHERUSDT.P"
+            return result
+
+    summary, _, _ = capture(config, make_request(config, symbols=SYMBOLS[:1]), WrongChart())
+    assert [f["code"] for f in summary["failures"]] == ["SYMBOL_NOT_FOUND"]
+    assert list((config.output_root / "batch" / "raw").iterdir()) == []
+
+
+@pytest.mark.parametrize("history_from", [None, HISTORY_FROM])
+def test_required_studies_must_be_present_in_ready_before_extraction(config, history_from):
+    class InitiallyEmptyChart(FakeChart):
+        target_reads = 0
+
+        def _ready(self, args):
+            result = super()._ready(args)
+            if self.symbol == SYMBOLS[0]:
+                self.target_reads += 1
+                if self.target_reads <= 4:
+                    result["studies"] = []
+            return result
+
+        def _extract(self, args):
+            if self.target_reads <= 4:
+                raise AssertionError("extracted before required studies were observed")
+            return super()._extract(args)
+
+    chart = InitiallyEmptyChart(settle_polls=0)
+    summary, _, _ = capture(
+        config, make_request(config, symbols=SYMBOLS[:1], history_from=history_from), chart
+    )
+    assert summary["totals"]["succeeded"] == 1, summary
+
+
+def test_persistently_missing_ready_study_never_reaches_extraction(config):
+    class EmptyChart(FakeChart):
+        def _ready(self, args):
+            result = super()._ready(args)
+            if self.symbol == SYMBOLS[0]:
+                result["studies"] = []
+            return result
+
+        def _extract(self, args):
+            raise AssertionError("missing required studies must prevent extraction")
+
+    summary, _, _ = capture(
+        config, make_request(config, symbols=SYMBOLS[:1], ready_timeout_sec=5), EmptyChart()
+    )
+    assert summary["totals"]["succeeded"] == 0
+    assert summary["failures"][0]["code"] == "NOT_READY_TIMEOUT"
+    manifest = read_json(config.output_root / "batch" / "capture-manifest.json")
+    assert manifest["symbols"][0]["error"]["detail"]["reason"] == "missing:Alpha"
+    assert list((config.output_root / "batch" / "raw").iterdir()) == []
+
+
+def test_history_and_extraction_retries_share_the_history_wait_budget(config):
+    clock = FakeClock()
+    chart = TransientExtractionChart(incomplete_reads=100, settle_polls=0)
+    request = make_request(config, symbols=SYMBOLS[:1], ready_timeout_sec=5, history_from=HISTORY_FROM)
+    summary = run_capture(
+        request, config, job_id="a" * 32, desktop=FakeDesktop(chart), sleep=clock.sleep, clock=clock
+    )
+    assert (summary["state"], summary["error"]["code"]) == ("stopped", "STUDY_MISSING")
+    assert clock.now <= 7.0  # Startup + initial ready + one five-second history/read budget.
+    assert list((config.output_root / "batch" / "raw").iterdir()) == []
+
+
+def test_transient_studies_do_not_allow_a_broken_screenshot(config):
+    class BrokenScreenshotChart(TransientExtractionChart):
+        def _screenshot(self, args):
+            return {"base64": "not-a-png"}
+
+    summary, _, _ = capture(config, make_request(config, symbols=SYMBOLS[:1]), BrokenScreenshotChart())
+    assert (summary["state"], summary["error"]["code"]) == ("stopped", "TV_INTERNALS_CHANGED")
+    assert list((config.output_root / "batch" / "raw").iterdir()) == []
+
+
+def test_missing_studies_with_no_bars_are_not_retried_as_a_transient_read(config):
+    class BrokenBarsChart(TransientExtractionChart):
+        def _extract(self, args):
+            result = super()._extract(args)
+            result["series"]["rows"] = 0
+            return result
+
+    chart = BrokenBarsChart()
+    summary, _, _ = capture(config, make_request(config, symbols=SYMBOLS[:1]), chart)
+    assert (summary["state"], summary["error"]["code"]) == ("stopped", "TV_INTERNALS_CHANGED")
+    assert chart.extracts == 1
+    assert list((config.output_root / "batch" / "raw").iterdir()) == []
+
+
+def test_transient_extraction_keeps_the_unchanged_study_evidence(config):
+    chart = TransientExtractionChart(static_study="Beta")
+    summary, _, _ = capture(config, make_request(config, symbols=SYMBOLS[:1]), chart)
+    assert summary["totals"]["succeeded"] == 1
+    data = read_json(config.output_root / "batch" / "raw" / safe_name(SYMBOLS[0]) / "data.json")
+    assert data["readiness"]["unchangedAfterSwitch"] == ["Beta"]
+
+
+def test_changed_extracted_resolution_is_not_retried_as_missing_studies(config):
+    class ChangedResolutionChart(TransientExtractionChart):
+        def _extract(self, args):
+            result = super()._extract(args)
+            result["identity"]["resolution"] = "240"
+            return result
+
+    chart = ChangedResolutionChart()
+    summary, _, _ = capture(config, make_request(config, symbols=SYMBOLS[:1]), chart)
+    assert [f["code"] for f in summary["failures"]] == ["NOT_READY_TIMEOUT"]
+    manifest = read_json(config.output_root / "batch" / "capture-manifest.json")
+    assert manifest["symbols"][0]["error"]["detail"]["reason"] == "resolution"
+    assert chart.extracts == 1
+    assert list((config.output_root / "batch" / "raw").iterdir()) == []
+
+
+def test_studies_missing_in_extraction_and_retry_ready_still_stop_the_self_check(config):
+    class DisappearingChart(TransientExtractionChart):
+        def _ready(self, args):
+            result = super()._ready(args)
+            if self.extracts:
+                result["studies"] = []
+            return result
+
+    chart = DisappearingChart()
+    summary, _, _ = capture(config, make_request(config, symbols=SYMBOLS[:1], ready_timeout_sec=5), chart)
+    assert (summary["state"], (summary["error"] or {}).get("code")) == ("stopped", "STUDY_MISSING")
+    assert summary["error"]["detail"]["missing"] == ["Alpha"]
+    assert summary["error"]["detail"]["found"] == []
+    assert summary["totals"]["pending"] == 1
+    assert list((config.output_root / "batch" / "raw").iterdir()) == []
+
+
+def test_history_is_not_silently_lost_when_the_chart_drifts_during_a_read_retry(config):
+    class DriftingHistoryChart(TransientExtractionChart):
+        def _extract(self, args):
+            result = super()._extract(args)
+            if self.extracts == 1:
+                self.symbol = self.start_symbol
+            return result
+
+    summary, _, _ = capture(
+        config,
+        make_request(config, symbols=SYMBOLS[:1], ready_timeout_sec=20, history_from=HISTORY_FROM),
+        DriftingHistoryChart(settle_polls=0),
+    )
+    assert summary["totals"]["succeeded"] == 0
+    manifest = read_json(config.output_root / "batch" / "capture-manifest.json")
+    assert manifest["symbols"][0]["error"]["detail"]["reason"] == "symbol"
+    assert list((config.output_root / "batch" / "raw").iterdir()) == []
+
+
+def test_a_call_without_required_studies_keeps_its_existing_extract_timeout(config):
+    clock = FakeClock()
+    chart = TransientExtractionChart(incomplete_reads=0, settle_polls=0, clock=clock, extract_cost=10)
+    request = make_request(config, symbols=SYMBOLS[:1], required_studies=(), ready_timeout_sec=5)
+    summary = run_capture(
+        request, config, job_id="a" * 32, desktop=FakeDesktop(chart), sleep=clock.sleep, clock=clock
+    )
+    assert summary["totals"]["succeeded"] == 1
+    assert (config.output_root / "batch" / "raw" / safe_name(SYMBOLS[0]) / "capture.json").is_file()

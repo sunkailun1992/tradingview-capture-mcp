@@ -33,7 +33,7 @@ prune.py                      只保留当天的批次：列出更早的批次�
 
 1. 调用方传入布局 ID、TradingView 代码、周期、输出目录、必需指标。
 2. `capture.run_capture` 拿批次锁，建目录，启动桌面版，跑 `diagnose` 自检。
-3. 每个品种：`ready` 记下切换前的指纹 → `switch` → 轮询 `ready` 直到 `readiness.judge` 判定就绪 →（传了 `history_from` 时）轮询 `history` 要更早的 K 线，直到 `history.load_history` 判定载入完，再等 `ready` 判定指标重新算完 → `extract` 一次读完 → `screenshot`。
+3. 每个品种：`ready` 记下切换前的指纹 → `switch` → 轮询 `ready` 直到必要指标齐全且 `readiness.judge` 判定就绪 →（传了 `history_from` 时）轮询 `history` 要更早的 K 线，直到 `history.load_history` 判定载入完，再等 `ready` 判定指标重新算完 → `extract` 一次读完；若主图身份及数据有效但暂缺必要指标，使用原期限的剩余时间重新等待和抽取 → 完整后才 `screenshot`。
 4. 文件先写进 `raw/.<名>.partial-<次>/`，全部成功后整目录改名为 `raw/<名>/`；失败的半成品移到 `attempts/<次>/`，从不删除。
 5. 收尾恢复原品种和周期，退出桌面版，写 `capture-manifest.json`。
 

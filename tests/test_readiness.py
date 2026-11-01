@@ -19,7 +19,7 @@ def snap(symbol=TARGET, resolution="1D", last=2000, studies=(("s1", "Alpha", 2, 
     )
 
 
-def verdict(current, *, previous="same", before=None, elapsed=0.0):
+def verdict(current, *, previous="same", before=None, elapsed=0.0, required_studies=()):
     return judge(
         target=TARGET,
         timeframe="1D",
@@ -27,6 +27,7 @@ def verdict(current, *, previous="same", before=None, elapsed=0.0):
         previous=current if previous == "same" else previous,
         before_switch=before,
         elapsed=elapsed,
+        required_studies=required_studies,
     )
 
 
@@ -135,3 +136,168 @@ def test_studies_still_moving_at_the_read_are_named():
     assert result.ready
     assert result.moving == ("Alpha",)
     assert verdict(snap()).moving == ()
+
+
+@pytest.mark.parametrize("study_fields", [{"studies": []}, {"studies": None}, {}])
+def test_required_study_cannot_be_ready_when_the_study_list_is_empty(study_fields):
+    current = ReadySnapshot.from_page(
+        {"symbol": TARGET, "resolution": "1D", "lastBarTime": 2000, **study_fields}
+    )
+    result = verdict(current, required_studies=("Alpha",))
+    assert (result.ready, result.reason) == (False, "missing:Alpha")
+
+
+def test_every_required_study_must_be_present():
+    result = verdict(snap(), required_studies=("Alpha", "Beta"))
+    assert (result.ready, result.reason) == (False, "missing:Beta")
+
+
+def test_required_studies_match_substrings_of_study_names():
+    current = snap(studies=(("s1", "Alpha Suite", 2, 2000, "a"), ("s2", "Beta Suite", 2, 2000, "b")))
+    result = verdict(current, required_studies=("Alpha", "Beta"))
+    assert (result.ready, result.reason) == (True, None)
+    assert verdict(current, previous=None, required_studies=("Alpha", "Beta")).reason == "unstable"
+
+
+def test_wait_until_ready_waits_for_missing_required_studies_to_reappear_and_stabilize():
+    complete = snap(studies=(("s1", "Alpha Suite", 2, 2000, "a"), ("s2", "Beta Suite", 2, 2000, "b")))
+    reads = iter([snap(studies=()), snap(studies=()), complete, complete])
+    now = [0.0]
+    result, snapshot, polls, waited = wait_until_ready(
+        lambda: next(reads),
+        target=TARGET,
+        timeframe="1D",
+        before_switch=None,
+        required_studies=("Alpha", "Beta"),
+        timeout=5,
+        sleep=lambda s: now.__setitem__(0, now[0] + s),
+        clock=lambda: now[0],
+    )
+    assert result.ready and snapshot == complete and polls == 4 and waited == 3.0
+
+
+@pytest.mark.parametrize(
+    "current, required_studies, reason",
+    [(snap(studies=()), ("Alpha",), "missing:Alpha"), (snap(), ("Alpha", "Beta"), "missing:Beta")],
+)
+def test_missing_required_studies_time_out_with_the_missing_name(current, required_studies, reason):
+    now = [0.0]
+    with pytest.raises(CaptureError) as err:
+        wait_until_ready(
+            lambda: current,
+            target=TARGET,
+            timeframe="1D",
+            before_switch=None,
+            required_studies=required_studies,
+            timeout=3,
+            sleep=lambda s: now.__setitem__(0, now[0] + s),
+            clock=lambda: now[0],
+        )
+    assert err.value.code == "NOT_READY_TIMEOUT"
+    assert err.value.detail == {"reason": reason, "polls": 4, "symbol": TARGET}
+    assert now[0] == 3.0
+
+
+def test_stable_chart_without_studies_is_ready_when_no_studies_are_required():
+    current = snap(studies=())
+    assert verdict(current).ready
+    now = [0.0]
+    result, snapshot, polls, waited = wait_until_ready(
+        lambda: current,
+        target=TARGET,
+        timeframe="1D",
+        before_switch=None,
+        timeout=3,
+        sleep=lambda s: now.__setitem__(0, now[0] + s),
+        clock=lambda: now[0],
+    )
+    assert result.ready and snapshot == current and polls == 2 and waited == 1.0
+
+
+@pytest.mark.parametrize("timeout, expected_sleeps", [(0.2, [0.2]), (1.2, [1.0, 0.2])])
+def test_wait_until_ready_never_sleeps_beyond_the_deadline(timeout, expected_sleeps):
+    now = [0.0]
+    sleeps = []
+
+    def sleep(seconds):
+        sleeps.append(seconds)
+        now[0] += seconds
+
+    with pytest.raises(CaptureError) as err:
+        wait_until_ready(
+            lambda: snap(studies=()),
+            target=TARGET,
+            timeframe="1D",
+            before_switch=None,
+            required_studies=("Alpha",),
+            timeout=timeout,
+            sleep=sleep,
+            clock=lambda: now[0],
+        )
+    assert err.value.code == "NOT_READY_TIMEOUT"
+    assert err.value.detail["reason"] == "missing:Alpha"
+    assert err.value.detail["polls"] == len(expected_sleeps) + 1
+    assert sleeps == pytest.approx(expected_sleeps)
+    assert now[0] == pytest.approx(timeout)
+
+
+@pytest.mark.parametrize("late_studies, reason", [(snap().studies, "deadline"), ((), "missing:Alpha")])
+def test_wait_until_ready_rejects_reads_that_finish_after_the_deadline(late_studies, reason):
+    now = [0.0]
+    reads = [0]
+
+    def read():
+        reads[0] += 1
+        if reads[0] == 2:
+            now[0] += 0.3
+            return ReadySnapshot(TARGET, "1D", 2000, late_studies)
+        return snap()
+
+    with pytest.raises(CaptureError) as err:
+        wait_until_ready(
+            read,
+            target=TARGET,
+            timeframe="1D",
+            before_switch=None,
+            required_studies=("Alpha",),
+            timeout=1.2,
+            sleep=lambda s: now.__setitem__(0, now[0] + s),
+            clock=lambda: now[0],
+        )
+    assert err.value.code == "NOT_READY_TIMEOUT"
+    assert err.value.detail == {"reason": reason, "polls": 2, "symbol": TARGET}
+    assert now[0] == 1.3
+
+
+def test_wait_until_ready_accepts_a_ready_read_exactly_at_the_deadline():
+    now = [0.0]
+    result, _, polls, waited = wait_until_ready(
+        snap,
+        target=TARGET,
+        timeframe="1D",
+        before_switch=None,
+        required_studies=("Alpha",),
+        timeout=1,
+        sleep=lambda s: now.__setitem__(0, now[0] + s),
+        clock=lambda: now[0],
+    )
+    assert result.ready and polls == 2 and waited == 1.0
+
+
+def test_zero_timeout_allows_one_immediate_read_without_sleeping():
+    now = [0.0]
+    sleeps = []
+    with pytest.raises(CaptureError) as err:
+        wait_until_ready(
+            snap,
+            target=TARGET,
+            timeframe="1D",
+            before_switch=None,
+            required_studies=("Alpha",),
+            timeout=0,
+            sleep=sleeps.append,
+            clock=lambda: now[0],
+        )
+    assert err.value.code == "NOT_READY_TIMEOUT"
+    assert err.value.detail == {"reason": "unstable", "polls": 1, "symbol": TARGET}
+    assert sleeps == []

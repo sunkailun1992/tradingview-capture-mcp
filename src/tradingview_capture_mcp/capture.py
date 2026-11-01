@@ -465,6 +465,7 @@ def _settle_current_chart(
             previous=previous,
             before_switch=None,
             elapsed=clock() - start,
+            required_studies=request.required_studies,
         )
         if current.symbol and verdict.ready:
             return {
@@ -522,15 +523,26 @@ def capture_symbol(
         raise CaptureError(SYMBOL_NOT_FOUND, "the chart did not switch to this symbol", {"after": after})
     switched_at = stamp()
     reswitches = 0
+    history_loaded = False
+    read_started = clock()
+    read_deadline = read_started + request.ready_timeout_sec
 
     def read() -> ReadySnapshot:
         nonlocal reswitches
-        snapshot = ReadySnapshot.from_page(driver.run("ready"))
-        if not snapshot.shows(code) and reswitches < MAX_RESWITCHES:
+        snapshot = ReadySnapshot.from_page(
+            driver.run("ready", timeout=max(0.001, min(60.0, read_deadline - clock())))
+        )
+        if not snapshot.shows(code) and reswitches < MAX_RESWITCHES and not history_loaded:
             # The layout can put its own symbol back right after a switch; ask again.
             reswitches += 1
-            driver.run("switch", {"symbol": code, "timeframe": timeframe}, timeout=40.0)
-            snapshot = ReadySnapshot.from_page(driver.run("ready"))
+            driver.run(
+                "switch",
+                {"symbol": code, "timeframe": timeframe},
+                timeout=max(0.001, min(40.0, read_deadline - clock())),
+            )
+            snapshot = ReadySnapshot.from_page(
+                driver.run("ready", timeout=max(0.001, min(60.0, read_deadline - clock())))
+            )
         return snapshot
 
     verdict, snapshot, polls, waited = wait_until_ready(
@@ -541,6 +553,7 @@ def capture_symbol(
         timeout=request.ready_timeout_sec,
         sleep=sleep,
         clock=clock,
+        required_studies=request.required_studies,
     )
     ready_at = stamp()
     loaded = (
@@ -548,8 +561,79 @@ def capture_symbol(
         if request.history_from is not None
         else None
     )
-    extracted = driver.run("extract", timeout=120.0) or {}
-    extracted_at = stamp()
+    if loaded is not None:
+        history_loaded = True
+        # History already has its own budget; re-reads use only what that step left.
+        read_deadline = clock() + max(0.0, request.ready_timeout_sec - loaded[1])
+    while True:
+        remaining = read_deadline - clock()
+        if request.required_studies and remaining <= 0:
+            raise CaptureError(
+                NOT_READY_TIMEOUT, "the chart read did not finish before its deadline", {"reason": "extract"}
+            )
+        extract_timeout = min(120.0, remaining) if request.required_studies else 120.0
+        extracted = driver.run("extract", timeout=extract_timeout) or {}
+        extracted_at = stamp()
+        identity = extracted.get("identity") or {}
+        if identity.get("symbol") and not same_symbol(
+            str(identity["symbol"]), code, identity.get("listedSymbol")
+        ):
+            raise CaptureError(
+                SYMBOL_NOT_FOUND, "the extracted chart is not this symbol", {"symbol": identity["symbol"]}
+            )
+        if identity.get("resolution") and normalize_resolution(str(identity["resolution"])) != timeframe:
+            raise CaptureError(
+                NOT_READY_TIMEOUT, "the extracted chart changed timeframe", {"reason": "resolution"}
+            )
+        names = [str(s.get("name") or "") for s in extracted.get("studies") or []]
+        missing = [want for want in request.required_studies if not any(want in name for name in names)]
+        if request.required_studies and clock() > read_deadline:
+            raise CaptureError(
+                NOT_READY_TIMEOUT, "the chart read did not finish before its deadline", {"reason": "extract"}
+            )
+        # Only an otherwise readable chart with incomplete studies is a transient read.
+        if not missing or not identity.get("symbol") or not (extracted.get("series") or {}).get("rows"):
+            break
+        remaining = read_deadline - clock()
+        if remaining > 0:
+            sleep(min(1.0, remaining))
+        remaining = read_deadline - clock()
+        if remaining <= 0:
+            raise CaptureError(
+                STUDY_MISSING,
+                "required studies were not observed before the read deadline",
+                {"missing": missing, "found": names},
+            )
+        try:
+            verdict, snapshot, extra_polls, _ = wait_until_ready(
+                read,
+                target=code,
+                timeframe=timeframe,
+                before_switch=before,
+                timeout=remaining,
+                sleep=sleep,
+                clock=clock,
+                required_studies=request.required_studies,
+                grace_sec=max(0.0, 10.0 - (clock() - read_started)),
+            )
+        except CaptureError as exc:
+            if exc.code != NOT_READY_TIMEOUT or not str(exc.detail.get("reason", "")).startswith("missing:"):
+                raise
+            # Keep the existing self-check failure semantics after an incomplete extraction.
+            raise CaptureError(
+                STUDY_MISSING,
+                "required studies were not observed before the read deadline",
+                {"missing": missing, "found": names},
+            ) from exc
+        polls += extra_polls
+        waited = clock() - read_started - (loaded[1] if loaded is not None else 0.0)
+        ready_at = stamp()
+        if clock() >= read_deadline:
+            raise CaptureError(
+                STUDY_MISSING,
+                "required studies were not observed before the read deadline",
+                {"missing": missing, "found": names},
+            )
     shot = driver.run("screenshot", timeout=60.0) or {}
     screenshot_at = stamp()
     try:
@@ -584,10 +668,10 @@ def capture_symbol(
             if not ok
         ]
         if failed and missing and set(failed) <= {"studies", "requiredStudies"}:
-            # Everything else answered: the layout lacks studies the caller asked for, the internals are fine.
+            # An incomplete read does not establish that a study was removed from the layout.
             raise CaptureError(
                 STUDY_MISSING,
-                "the layout lacks required studies; compare required_studies with the studies on the layout",
+                "required studies were not observed in the extracted chart data",
                 {"missing": missing, "found": names},
             )
         if failed:
@@ -774,9 +858,10 @@ def _load_history(
             target=code,
             timeframe=timeframe,
             before_switch=None,
-            timeout=max(request.ready_timeout_sec - (clock() - start), 1.0),
+            timeout=max(request.ready_timeout_sec - (clock() - start), 0.0),
             sleep=sleep,
             clock=clock,
+            required_studies=request.required_studies,
         )
     except CaptureError as exc:
         if exc.code != NOT_READY_TIMEOUT:
