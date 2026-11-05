@@ -163,6 +163,60 @@ def test_a_switch_the_layout_undoes_is_made_again(config):
     assert data["readiness"]["reswitches"] == 1
 
 
+class CallbackTimeoutChart(FakeChart):
+    """The symbol changes, but TradingView never settles the switch callback."""
+
+    def _switch(self, args):
+        result = super()._switch(args)
+        result["timedOut"] = True
+        return result
+
+
+def test_matching_symbol_with_callback_timeout_still_requires_full_readiness(config):
+    chart = CallbackTimeoutChart(settle_polls=4)
+    summary, _, _ = capture(config, make_request(config, symbols=SYMBOLS[:1]), chart)
+    assert summary["totals"]["succeeded"] == 1, summary
+    assert chart.extracted_settled == [True]
+    data = read_json(config.output_root / "batch" / "raw" / safe_name(SYMBOLS[0]) / "data.json")
+    assert data["readiness"]["polls"] >= 2
+
+
+def test_callback_timeout_does_not_accept_wrong_identity(config):
+    chart = CallbackTimeoutChart(unknown={SYMBOLS[0]})
+    summary, _, _ = capture(config, make_request(config, symbols=SYMBOLS[:1]), chart)
+    assert summary["failures"][0]["code"] == "SYMBOL_NOT_FOUND"
+    assert list((config.output_root / "batch" / "raw").iterdir()) == []
+
+
+def test_callback_timeout_does_not_bypass_study_readiness(config):
+    chart = CallbackTimeoutChart(never_ready={SYMBOLS[0]})
+    summary, _, _ = capture(config, make_request(config, symbols=SYMBOLS[:1], ready_timeout_sec=5), chart)
+    assert summary["failures"][0]["code"] == "NOT_READY_TIMEOUT"
+    assert not chart.extracted_settled
+    assert list((config.output_root / "batch" / "raw").iterdir()) == []
+
+
+def test_callback_timeout_still_accepts_a_matching_listed_feed(config):
+    chart = CallbackTimeoutChart(resolves={SYMBOLS[0]: "BATS:AAA"}, listed={"BATS:AAA": SYMBOLS[0]})
+    summary, _, _ = capture(config, make_request(config, symbols=SYMBOLS[:1]), chart)
+    assert summary["totals"]["succeeded"] == 1, summary
+
+
+def test_callback_timeout_does_not_bypass_resolution(config):
+    class WrongResolution(CallbackTimeoutChart):
+        def _switch(self, args):
+            result = super()._switch(args)
+            self.resolution = "60"
+            result["after"]["resolution"] = self.resolution
+            return result
+
+    summary, chart, _ = capture(
+        config, make_request(config, symbols=SYMBOLS[:1], ready_timeout_sec=5), WrongResolution()
+    )
+    assert summary["failures"][0]["code"] == "NOT_READY_TIMEOUT"
+    assert not chart.extracted_settled
+
+
 def test_a_symbol_served_from_a_delayed_feed_is_accepted(config):
     summary, _, _ = capture(config, make_request(config), FakeChart(resolves={SYMBOLS[2]: "NYMEX_DL:CL1!"}))
     assert summary["totals"]["succeeded"] == 3, summary

@@ -517,10 +517,10 @@ def capture_symbol(
     before = ReadySnapshot.from_page(driver.run("ready"))
     switched = driver.run("switch", {"symbol": code, "timeframe": timeframe}, timeout=40.0) or {}
     after = switched.get("after") or {}
-    if switched.get("timedOut") or not same_symbol(
-        str(after.get("symbol") or ""), code, after.get("listedSymbol")
-    ):
+    if not same_symbol(str(after.get("symbol") or ""), code, after.get("listedSymbol")):
         raise CaptureError(SYMBOL_NOT_FOUND, "the chart did not switch to this symbol", {"after": after})
+    # A missing callback is not a missing symbol. The normal bounded readiness loop still checks
+    # resolution, bars, required studies and stable reads before extraction can write any output.
     switched_at = stamp()
     reswitches = 0
     history_loaded = False
