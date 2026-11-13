@@ -18,6 +18,8 @@ Three layers: Python unit tests with fakes (`pytest`, warnings are errors), page
 - pytest 把警告当错误（`filterwarnings = ["error"]`）：资源没关、弃用接口都会让测试失败。
 - 测试里不真等：时间通过 `sleep` / `clock` 注入假时钟。
 - 测试不碰真实 TradingView、真实输出根目录或用户配置；配置用 `TRADINGVIEW_CAPTURE_CONFIG` 指向临时文件。
+- 偶发失败按缺陷处理：先查明原因再修，不用自动重试、放宽断言、跳过或删除测试换取通过；确需临时跳过时写明原因与恢复条件，并在交付说明中列出。
+- 本机 macOS 通过不代表 CI 的 Linux 通过；只在一个平台验证过的结论要写明平台。
 
 ## 夹具
 
