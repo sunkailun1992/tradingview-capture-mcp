@@ -2,12 +2,13 @@
 
 ## English summary
 
-Seven rules: the DevTools port listens on loopback only and only while capturing; no caller-supplied scripts ever run in the page, and only `switch.js` and `history.js` change the chart; only the process this tool started is ever stopped; outputs are owner-only and create-only; no network beyond the local DevTools connection; logs and diagnostics carry no chart contents; nothing private reaches the repository.
+Seven rules: the DevTools port listens on loopback only (it stays open while TradingView Desktop runs with it, so the user can keep using it); no caller-supplied scripts ever run in the page, and only `switch.js` and `history.js` change the chart; a TradingView Desktop that was already running is never stopped, only one this tool started to quit again; outputs are owner-only and create-only; no network beyond the local DevTools connection; logs and diagnostics carry no chart contents; nothing private reaches the repository.
 
 ## 1. 调试端口
 
-- 启动前检查端口未被占用（`PORT_IN_USE`），启动后检查只监听 127.0.0.1 / [::1]（否则 `CDP_NOT_LOCAL` 并立刻停掉进程）。
-- 只在采集或诊断期间开着；结束时退出本工具启动的桌面版，端口随之关闭。
+- 接上已开着的桌面版前检查：监听这个端口的就是 TradingView 进程（`pgrep -x TradingView` 列出的进程之一），而且只监听 127.0.0.1 / [::1]；不是 TradingView 在监听报 `TV_ALREADY_RUNNING`（桌面版开着但没带端口）或 `PORT_IN_USE`（桌面版没开、端口被别的程序占着），不在本机回环上报 `CDP_NOT_LOCAL`，都不碰那个进程。
+- 自己启动前检查端口未被占用（`PORT_IN_USE`），启动后检查只监听 127.0.0.1 / [::1]（否则 `CDP_NOT_LOCAL` 并立刻停掉刚启动的进程）。源码里不得出现 `--remote-debugging-address`（`tests/test_scope.py` 把关）。
+- 端口随桌面版开着：`keep_open = true`（默认）时本工具打开的桌面版采完留给用户，端口一直开着；`keep_open = false` 时采完退出本工具启动的桌面版，端口随之关闭。端口开着时本机任何进程都能控制这个 TradingView 会话，README 写明这一风险。
 
 ## 2. 页面脚本
 
@@ -17,8 +18,10 @@ Seven rules: the DevTools port listens on loopback only and only while capturing
 
 ## 3. 进程
 
-- 桌面版用固定参数列表启动，不经 shell；环境去掉 `ELECTRON_*`、`DYLD_*`、`NODE_OPTIONS`、`NODE_PATH`，免得宿主传下来的变量让它以纯 Node 启动或载入别的代码。停止时只对自己持有的 `Popen` 对象发信号（先 SIGTERM，超时 SIGKILL）。
-- 发现桌面版已经在普通模式下运行时报 `TV_ALREADY_RUNNING`，绝不结束用户的程序。
+- 桌面版用固定参数列表启动，不经 shell。要留着的用 `/usr/bin/open -a <app> --args …` 打开（macOS 的启动方式，它不继承本进程的环境，也不是本进程的子进程）；`keep_open = false` 时直接启动可执行文件，环境去掉 `ELECTRON_*`、`DYLD_*`、`NODE_OPTIONS`、`NODE_PATH`，免得宿主传下来的变量让它以纯 Node 启动或载入别的代码。两种都只带调试端口和三个不放慢后台页面的开关。
+- 停止只有两种：`keep_open = false` 时对自己持有的 `Popen` 对象发信号（先 SIGTERM，超时 SIGKILL）；刚用 `open` 打开的桌面版发现端口不在本机回环上时，对监听这个端口的那个 TradingView 进程发 SIGTERM（打开前没有任何 TradingView 在运行，所以它就是刚打开的那个）。
+- 已经在运行的桌面版绝不结束：带端口的接上去用，没带端口的报 `TV_ALREADY_RUNNING`，请用户自己 ⌘Q。
+- `install-launcher` 用固定参数调 `/usr/bin/osacompile` 生成启动器；嵌进 AppleScript 的程序路径按 AppleScript 字符串转义，运行时由 `quoted form of` 交给 shell，不拼接未转义的文本；已有同名文件时报 `OUTPUT_EXISTS`，不覆盖。
 - 禁止 `pkill`、`killall` 和任何按进程名结束进程的做法。
 
 ## 4. 文件

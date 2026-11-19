@@ -5,7 +5,7 @@ import pytest
 from helpers import make_batch, write_config
 from mcp.server.mcpserver.exceptions import ToolError
 
-from tradingview_capture_mcp import jobs
+from tradingview_capture_mcp import desktop, jobs
 from tradingview_capture_mcp.mcp_server import app
 
 SYMBOL = "BINANCE:AAAUSDT.P"
@@ -23,7 +23,7 @@ def call(name, arguments):
     return asyncio.run(app.call_tool(name, arguments))
 
 
-def test_the_eight_tools_are_listed():
+def test_the_nine_tools_are_listed():
     tools = asyncio.run(app.list_tools())
     assert {tool.name for tool in tools} == {
         "capture_start",
@@ -33,8 +33,15 @@ def test_the_eight_tools_are_listed():
         "symbol_data",
         "image_crop",
         "diagnose",
+        "desktop_open",
         "output_prune",
     }
+
+
+def test_desktop_open_opens_tradingview_for_the_user(root, monkeypatch):
+    report = {"state": "running", "port": 9333, "pid": 77, "version": "9.9.9"}
+    monkeypatch.setattr(desktop, "open_for_user", lambda config: report)
+    assert json.loads(call("desktop_open", {}).content[0].text) == report
 
 
 def test_output_prune_is_a_dry_run_unless_asked(root):
@@ -162,7 +169,10 @@ def test_instructions_point_at_the_readiness_evidence():
 
 def test_instructions_explain_a_desktop_the_user_already_has_open():
     text = app.instructions
-    for hint in ("TV_ALREADY_RUNNING", "Cmd+Q", "never kill", "capture_retry"):
+    for hint in ("TV_ALREADY_RUNNING", "Cmd+Q", "never kill", "capture_retry", "desktop_open", "keep_open"):
+        assert hint in text
+    # A capture uses a TradingView that runs with the port and puts the chart back; it no longer quits it.
+    for hint in ("debugging port", "leaves it running", "puts the original symbol and resolution back"):
         assert hint in text
 
 

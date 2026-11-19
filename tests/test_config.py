@@ -29,9 +29,20 @@ def test_defaults_and_resolved_output_root(tmp_path):
 def test_reads_every_key(tmp_path):
     root = tmp_path / "out"
     root.mkdir()
-    text = f'app_path = "{tmp_path / "TV.app"}"\ndebug_port = 9444\noutput_root = "{root}"\n'
+    text = (
+        f'app_path = "{tmp_path / "TV.app"}"\ndebug_port = 9444\noutput_root = "{root}"\nkeep_open = false\n'
+    )
     config = load_config(write(tmp_path / "c.toml", text))
-    assert (config.app_path, config.debug_port) == (tmp_path / "TV.app", 9444)
+    assert (config.app_path, config.debug_port, config.keep_open) == (tmp_path / "TV.app", 9444, False)
+
+
+def test_tradingview_is_kept_open_unless_the_config_says_otherwise(tmp_path):
+    # Callers that write their own config with only app_path, debug_port and output_root get the new default.
+    root = tmp_path / "out"
+    root.mkdir()
+    assert load_config(write(tmp_path / "c.toml", f'output_root = "{root}"\n')).keep_open is True
+    text = f'output_root = "{root}"\nkeep_open = true\n'
+    assert load_config(write(tmp_path / "d.toml", text)).keep_open is True
 
 
 @pytest.mark.parametrize(
@@ -42,6 +53,8 @@ def test_reads_every_key(tmp_path):
         ('output_root = "{root}"\ndebug_port = 80\n', "debug_port"),
         ('output_root = "{root}"\ndebug_port = true\n', "debug_port"),
         ('output_root = "{root}"\nextra = 1\n', "unknown config keys"),
+        ('output_root = "{root}"\nkeep_open = "no"\n', "keep_open"),
+        ('output_root = "{root}"\nkeep_open = 0\n', "keep_open"),
         ("output_root = [\n", "not valid TOML"),
     ],
 )

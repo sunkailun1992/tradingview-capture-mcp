@@ -1,4 +1,4 @@
-"""Command line: capture, status, read, crop, prune, doctor, and the stdio MCP server."""
+"""Command line: capture, status, read, crop, prune, doctor, open, install-launcher, and the MCP server."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from . import diagnostics, jobs, prune, results
+from . import desktop, diagnostics, jobs, launcher, prune, results
 from .capture import CaptureRequest, run_capture
 from .config import load_config
 from .driver import RealDesktop
@@ -75,6 +75,19 @@ def build_parser() -> argparse.ArgumentParser:
     clean.add_argument("--apply", action="store_true", help="move the listed batches to the Trash")
     doctor = sub.add_parser("doctor", help="check the TradingView Desktop internals a capture needs")
     doctor.add_argument("--layout", required=True)
+    sub.add_parser(
+        "open", help="open TradingView Desktop with the capture debugging port and leave it running for you"
+    )
+    install = sub.add_parser(
+        "install-launcher", help="make a double-clickable app that runs `open` (default ~/Applications)"
+    )
+    install.add_argument("--path", type=Path, default=launcher.DEFAULT_PATH, help="where the .app goes")
+    install.add_argument(
+        "--command",
+        dest="program",
+        type=Path,
+        help="the tradingview-capture program the app runs (default: this one)",
+    )
     sub.add_parser("mcp", help="run the MCP server on stdio")
     return parser
 
@@ -108,7 +121,11 @@ def _capture(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
 def _dispatch(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     if args.command == "capture":
         return _capture(args)
+    if args.command == "install-launcher":
+        return launcher.install(args.path, args.program or Path(sys.argv[0]).absolute()), 0
     config = load_config()
+    if args.command == "open":
+        return desktop.open_for_user(config), 0
     if args.command == "run-job":
         summary = jobs.run_job(config, args.job_id)
         return summary, 0 if summary["state"] == "finished" else 1

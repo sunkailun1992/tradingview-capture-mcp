@@ -1,9 +1,13 @@
-"""Start, check and stop TradingView Desktop with a loopback-only DevTools port."""
+"""Find, start and let go of TradingView Desktop with a loopback-only DevTools port.
+
+A TradingView Desktop that already runs with this tool's port is used as it is and never quit, so the user can
+keep it open; one that runs without the port cannot be reached and is never touched."""
 
 from __future__ import annotations
 
 import os
 import re
+import signal
 import subprocess
 import time
 import urllib.error
@@ -24,6 +28,16 @@ from .errors import (
 )
 
 LOCAL_ADDRESSES = {"127.0.0.1", "[::1]", "localhost"}
+# macOS's own way to open an app (LaunchServices): a TradingView left open is then an app of the user's
+# session like any other, not a child of whichever process happened to start a batch.
+OPEN = "/usr/bin/open"
+# A chart in a background tab, or in a window other windows cover, otherwise gets its timers slowed to one
+# wake-up a second, and after five minutes to one a minute; the readiness waits would time out.
+APP_SWITCHES = (
+    "--disable-background-timer-throttling",
+    "--disable-renderer-backgrounding",
+    "--disable-backgrounding-occluded-windows",
+)
 _TV_VERSION = re.compile(r"TVDesktop/(\S+)")
 # Variables an MCP host built on Electron or Node can pass down: ELECTRON_RUN_AS_NODE starts TradingView
 # Desktop as plain Node, without a window or debugging port, and the others load code into it.
@@ -32,14 +46,13 @@ _APP_UNSAFE_ENV = re.compile(r"^(ELECTRON_|DYLD_|NODE_OPTIONS$|NODE_PATH$)")
 
 @dataclass
 class DesktopSession:
-    process: subprocess.Popen
     port: int
     version: str
     browser: str
-
-    @property
-    def pid(self) -> int:
-        return self.process.pid
+    pid: int | None = None  # the TradingView Desktop process that serves the port
+    launched: bool = False  # this tool started it; otherwise it was already open
+    # Held only for a TradingView this tool started to quit again at the end (keep_open = false).
+    process: subprocess.Popen | None = None
 
 
 def running_pids(process_name: str = "TradingView") -> list[int]:
@@ -49,14 +62,26 @@ def running_pids(process_name: str = "TradingView") -> list[int]:
     return [int(pid) for pid in result.stdout.split()]
 
 
-def listening_addresses(port: int) -> list[str]:
+def listeners(port: int) -> list[tuple[int, str]]:
+    """(pid, address) of every socket listening on the port."""
     result = subprocess.run(
-        ["/usr/sbin/lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-F", "n"],
+        ["/usr/sbin/lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-F", "pn"],
         capture_output=True,
         text=True,
         check=False,
     )
-    return [line[1:].rsplit(":", 1)[0] for line in result.stdout.splitlines() if line.startswith("n")]
+    found: list[tuple[int, str]] = []
+    pid: int | None = None
+    for line in result.stdout.splitlines():
+        if line.startswith("p") and line[1:].isdigit():
+            pid = int(line[1:])
+        elif line.startswith("n") and pid is not None:
+            found.append((pid, line[1:].rsplit(":", 1)[0]))
+    return found
+
+
+def listening_addresses(port: int) -> list[str]:
+    return [address for _, address in listeners(port)]
 
 
 def parse_version(info: dict[str, Any]) -> str:
@@ -64,15 +89,17 @@ def parse_version(info: dict[str, Any]) -> str:
     return match.group(1) if match else "unknown"
 
 
-def already_running(pids: list[int]) -> CaptureError:
-    """The error for a TradingView Desktop the user started; it says why and what to do."""
+def already_running(pids: list[int], port: int) -> CaptureError:
+    """The error for a TradingView Desktop opened without this tool's port; it says why and what to do."""
     return CaptureError(
         TV_ALREADY_RUNNING,
-        "TradingView Desktop is already running without this tool's debugging port. The tool has to "
-        "start it itself and quits it when the batch ends; full screen or not makes no difference. Ask "
-        "the user to quit it completely (Cmd+Q; closing the window is not enough) and never kill it, "
-        "then retry; capture_retry continues a batch that stopped this way.",
-        {"pids": pids},
+        "TradingView Desktop is running without this tool's debugging port (opened from the Dock, Finder or "
+        "Spotlight), so the tool cannot use it; full screen or not makes no difference. Ask the user to quit "
+        "it completely (Cmd+Q; closing the window is not enough) and never kill it. Then either open it "
+        "again with the port (the TradingView Capture launcher, `tradingview-capture open` or the "
+        "desktop_open tool) or leave it closed and let the next capture start it; it stays open afterwards. "
+        "Then retry; capture_retry continues a batch that stopped this way.",
+        {"pids": pids, "port": port},
     )
 
 
@@ -82,19 +109,90 @@ def app_environment(environ: Mapping[str, str] | None = None) -> dict[str, str]:
     return {key: value for key, value in source.items() if not _APP_UNSAFE_ENV.match(key)}
 
 
-def launch(config: Config, *, startup_timeout: float = 40.0, poll: float = 0.5) -> DesktopSession:
-    """Start TradingView Desktop with the DevTools port; refuse to touch a copy the user already runs."""
+def launch_arguments(port: int) -> list[str]:
+    return [f"--remote-debugging-port={port}", *APP_SWITCHES]
+
+
+def attachable(config: Config) -> int | None:
+    """The TradingView Desktop process that serves DevTools on the configured port, or None when none runs.
+
+    Raises when TradingView Desktop runs but cannot be used, or another program holds the port; it never
+    waits, so a capture can say so before it creates anything."""
+    pids = running_pids()
+    found = listeners(config.debug_port)
+    if not pids:
+        if found:
+            raise CaptureError(PORT_IN_USE, "the debug port is already in use", {"port": config.debug_port})
+        return None
+    served = [pid for pid, _ in found if pid in pids]
+    if not served:
+        raise already_running(pids, config.debug_port)
+    addresses = [address for _, address in found]
+    if any(address not in LOCAL_ADDRESSES for address in addresses):
+        # It is the user's TradingView: refuse it, but never stop it.
+        raise CaptureError(
+            CDP_NOT_LOCAL,
+            "TradingView Desktop's debugging port listens beyond loopback; ask the user to quit it (Cmd+Q) "
+            "and open it again with `tradingview-capture open`",
+            {"addresses": addresses},
+        )
+    return served[0]
+
+
+def connect_or_launch(config: Config, *, startup_timeout: float = 40.0, poll: float = 0.5) -> DesktopSession:
+    """Use the TradingView Desktop that runs with the port, or start one; never touch one without the port."""
+    pid = attachable(config)
+    if pid is None:
+        return _launch(config, startup_timeout=startup_timeout, poll=poll)
+    info = _wait_for_devtools(None, config.debug_port, startup_timeout, poll)
+    return DesktopSession(
+        port=config.debug_port,
+        version=parse_version(info),
+        browser=str(info.get("Browser", "")),
+        pid=pid,
+        launched=False,
+    )
+
+
+def _launch(
+    config: Config,
+    *,
+    keep_open: bool | None = None,
+    foreground: bool = False,
+    startup_timeout: float = 40.0,
+    poll: float = 0.5,
+) -> DesktopSession:
+    """Start TradingView Desktop with the DevTools port; only after attachable() found none running.
+
+    To stay open (keep_open, the default) it is opened the way macOS opens apps and this tool holds nothing
+    of it; otherwise this tool starts it as its own child so that release() can quit it again."""
     if not config.app_binary.is_file():
         raise CaptureError(
             TV_NOT_INSTALLED, "TradingView Desktop was not found", {"app_path": str(config.app_path)}
         )
-    pids = running_pids()
-    if pids:
-        raise already_running(pids)
-    if listening_addresses(config.debug_port):
-        raise CaptureError(PORT_IN_USE, "the debug port is already in use", {"port": config.debug_port})
+    stays_open = config.keep_open if keep_open is None else keep_open
+    port = config.debug_port
+    if stays_open:
+        _open_app(config, launch_arguments(port), foreground=foreground)
+        info = _wait_for_devtools(None, port, startup_timeout, poll)
+        pids = running_pids()
+        try:
+            pid = _serving_pid(port, pids)
+        except CaptureError as exc:
+            if exc.code == CDP_NOT_LOCAL:
+                # The copy just opened holds the port; nothing else ran when it was asked for, so stop it.
+                for holder in {holder for holder, _ in listeners(port) if holder in pids}:
+                    os.kill(holder, signal.SIGTERM)
+            raise
+        return DesktopSession(
+            port=port,
+            version=parse_version(info),
+            browser=str(info.get("Browser", "")),
+            pid=pid,
+            launched=True,
+        )
     process = subprocess.Popen(
-        [str(config.app_binary), f"--remote-debugging-port={config.debug_port}"],
+        [str(config.app_binary), *launch_arguments(port)],
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -102,27 +200,77 @@ def launch(config: Config, *, startup_timeout: float = 40.0, poll: float = 0.5) 
         env=app_environment(),
     )
     try:
-        info = _wait_for_devtools(process, config.debug_port, startup_timeout, poll)
-        addresses = listening_addresses(config.debug_port)
-        if not addresses or any(address not in LOCAL_ADDRESSES for address in addresses):
-            raise CaptureError(
-                CDP_NOT_LOCAL, "the debug port must listen on loopback only", {"addresses": addresses}
-            )
+        info = _wait_for_devtools(process, port, startup_timeout, poll)
+        _serving_pid(port, [process.pid])
         return DesktopSession(
-            process=process,
-            port=config.debug_port,
+            port=port,
             version=parse_version(info),
             browser=str(info.get("Browser", "")),
+            pid=process.pid,
+            launched=True,
+            process=process,
         )
     except BaseException:
         stop_process(process)
         raise
 
 
-def _wait_for_devtools(process: subprocess.Popen, port: int, timeout: float, poll: float) -> dict[str, Any]:
+def release(session: DesktopSession) -> None:
+    """Let go of TradingView Desktop: quit it only when this tool started it to quit at the end."""
+    if session.process is not None:
+        stop_process(session.process)
+
+
+def open_for_user(config: Config, *, startup_timeout: float = 40.0, poll: float = 0.5) -> dict[str, Any]:
+    """Open TradingView Desktop in front with the port for the user to keep using, or bring it forward."""
+    pid = attachable(config)
+    if pid is None:
+        session = _launch(config, keep_open=True, foreground=True, startup_timeout=startup_timeout, poll=poll)
+        return {"state": "started", "port": session.port, "pid": session.pid, "version": session.version}
+    info = _wait_for_devtools(None, config.debug_port, startup_timeout, poll)
+    _open_app(config, None, foreground=True)  # an app already running only comes to the front
+    return {"state": "running", "port": config.debug_port, "pid": pid, "version": parse_version(info)}
+
+
+def _open_app(config: Config, arguments: list[str] | None, *, foreground: bool) -> None:
+    argv = [OPEN, *(() if foreground else ("-g",)), "-a", str(config.app_path)]
+    if arguments:
+        argv += ["--args", *arguments]
+    result = subprocess.run(
+        argv,
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=60,
+        env=app_environment(),
+    )
+    if result.returncode != 0:
+        raise CaptureError(
+            TV_STARTUP_TIMEOUT, "macOS could not open TradingView Desktop", {"returncode": result.returncode}
+        )
+
+
+def _serving_pid(port: int, pids: list[int]) -> int:
+    """The process among `pids` that serves the port; every address on the port must be loopback."""
+    found = listeners(port)
+    served = [pid for pid, _ in found if pid in pids]
+    if not served:
+        raise CaptureError(PORT_IN_USE, "another program holds the debug port", {"port": port})
+    addresses = [address for _, address in found]
+    if any(address not in LOCAL_ADDRESSES for address in addresses):
+        raise CaptureError(
+            CDP_NOT_LOCAL, "the debug port must listen on loopback only", {"addresses": addresses}
+        )
+    return served[0]
+
+
+def _wait_for_devtools(
+    process: subprocess.Popen | None, port: int, timeout: float, poll: float
+) -> dict[str, Any]:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        if process.poll() is not None:
+        if process is not None and process.poll() is not None:
             raise CaptureError(
                 TV_STARTUP_TIMEOUT,
                 "TradingView Desktop exited during startup",
@@ -132,6 +280,12 @@ def _wait_for_devtools(process: subprocess.Popen, port: int, timeout: float, pol
             return cdp.http_json(port, "/json/version", timeout=2.0)
         except (OSError, ValueError):
             time.sleep(poll)
+    if process is None:
+        pids = running_pids()
+        if pids and not any(pid in pids for pid, _ in listeners(port)):
+            # macOS brings an app that already runs to the front and drops the arguments: the user opened
+            # TradingView meanwhile, without the port.
+            raise already_running(pids, port)
     raise CaptureError(TV_STARTUP_TIMEOUT, f"DevTools did not answer within {timeout:g}s", {"port": port})
 
 
@@ -214,10 +368,12 @@ def layout_not_found(
         )
     return CaptureError(
         LAYOUT_NOT_FOUND,
-        f"TradingView Desktop started but no tab showed this layout within {timeout:g}s. It loads the "
-        "layout from TradingView's servers, so a network outage at startup ends here, and so does a layout "
-        "ID that is wrong or not in this account (chartPages counts tabs showing other layouts). Check the "
-        "network and the layout ID, then try again; capture_retry continues a batch that stopped this way.",
+        f"No TradingView Desktop tab showed this layout within {timeout:g}s. If TradingView was already "
+        "open, ask the user to open this layout in one of its tabs. A TradingView that just started loads "
+        "the layout from TradingView's servers, so a network outage at startup ends here, and so does a "
+        "layout ID that is wrong or not in this account (chartPages counts tabs showing other layouts). "
+        "Check the network and the layout ID, then try again; capture_retry continues a batch that stopped "
+        "this way.",
         detail,
     )
 

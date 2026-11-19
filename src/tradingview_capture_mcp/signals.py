@@ -1,4 +1,5 @@
-"""Turn SIGTERM and SIGHUP into SystemExit so cleanup runs: the chart is restored and TradingView stops."""
+"""Turn SIGTERM and SIGHUP into SystemExit so cleanup runs: the chart is restored, and a TradingView this tool
+started is quit when the config does not keep it open."""
 
 from __future__ import annotations
 
@@ -35,7 +36,7 @@ def exit_on_termination() -> Iterator[None]:
 
 
 def install_server_handlers() -> None:
-    """For the long-running MCP server: a tool may be running TradingView in another thread."""
+    """For the long-running MCP server: a tool may be using TradingView in another thread."""
 
     def handler(signum: int, frame: FrameType | None) -> None:
         _ignore_further_signals()

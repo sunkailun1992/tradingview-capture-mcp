@@ -96,3 +96,9 @@ def test_the_devtools_client_only_evaluates_the_fixed_page_scripts():
     for path in SOURCE.rglob("*.py"):
         methods |= set(re.findall(r"\.call\(\s*\"([^\"]+)\"", path.read_text(encoding="utf-8")))
     assert methods == {"Runtime.evaluate"}
+
+
+def test_the_debugging_port_is_never_offered_beyond_loopback():
+    # Chromium binds DevTools to 127.0.0.1 unless told otherwise; nothing here may tell it otherwise.
+    for path in SOURCE.rglob("*.py"):
+        assert "--remote-debugging-address" not in path.read_text(encoding="utf-8"), path

@@ -1,4 +1,4 @@
-"""The local configuration file: where TradingView Desktop is and where batches go."""
+"""The local configuration file: where TradingView Desktop is, where batches go, and whether it stays open."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from .errors import CONFIG_INVALID, CaptureError
 DEFAULT_CONFIG_PATH = Path.home() / ".config" / "tradingview-capture-mcp" / "config.toml"
 DEFAULT_APP_PATH = Path("/Applications/TradingView.app")
 DEFAULT_DEBUG_PORT = 9333
-KNOWN_KEYS = {"app_path", "debug_port", "output_root"}
+KNOWN_KEYS = {"app_path", "debug_port", "output_root", "keep_open"}
 VOLUMES = Path("/Volumes")
 
 
@@ -21,6 +21,8 @@ class Config:
     app_path: Path
     debug_port: int
     output_root: Path
+    # Leave a TradingView Desktop this tool started running when the batch ends, for the user to keep using.
+    keep_open: bool = True
 
     @property
     def app_binary(self) -> Path:
@@ -93,4 +95,7 @@ def load_config(path: Path | None = None) -> Config:
     app = raw.get("app_path", str(DEFAULT_APP_PATH))
     if not isinstance(app, str) or not app:
         raise CaptureError(CONFIG_INVALID, "app_path must be a non-empty string", {})
-    return Config(app_path=Path(app).expanduser(), debug_port=port, output_root=root)
+    keep_open = raw.get("keep_open", True)
+    if not isinstance(keep_open, bool):
+        raise CaptureError(CONFIG_INVALID, "keep_open must be true or false", {"keep_open": keep_open})
+    return Config(app_path=Path(app).expanduser(), debug_port=port, output_root=root, keep_open=keep_open)

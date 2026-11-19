@@ -7,9 +7,11 @@ from pathlib import Path
 
 import pytest
 
+from tradingview_capture_mcp import desktop
 from tradingview_capture_mcp.capture import CaptureRequest, run_capture
 from tradingview_capture_mcp.config import load_config
 from tradingview_capture_mcp.driver import RealDesktop
+from tradingview_capture_mcp.errors import CaptureError
 from tradingview_capture_mcp.store import read_json, safe_name
 from tradingview_capture_mcp.validation import same_symbol
 
@@ -67,3 +69,19 @@ def test_capture_one_symbol_with_history():
     rows = (folder / "chart.csv").read_text(encoding="utf-8").splitlines()[1:]
     assert len(rows) == history["barsCount"]
     assert int(rows[0].split(",")[0]) == history["firstBarTime"]
+
+
+def test_capture_uses_an_open_tradingview_and_leaves_it_running():
+    """TradingView Desktop runs with the port (tradingview-capture open): the batch uses it as it is."""
+    if os.environ.get("TRADINGVIEW_CAPTURE_LIVE") != "1":
+        pytest.skip("set TRADINGVIEW_CAPTURE_LIVE=1 to run against TradingView Desktop")
+    try:
+        pid = desktop.attachable(load_config())
+    except CaptureError as exc:
+        pytest.skip(f"TradingView Desktop cannot be used as it is: {exc.code}")
+    if pid is None:
+        pytest.skip("open TradingView Desktop with `tradingview-capture open` first")
+    folder, _ = _capture_live("live-attached")
+    manifest = read_json(folder.parent.parent / "capture-manifest.json")
+    assert (manifest["desktop"]["launched"], manifest["desktop"]["leftOpen"]) == (False, True)
+    assert desktop.attachable(load_config()) == pid  # the same TradingView Desktop still runs

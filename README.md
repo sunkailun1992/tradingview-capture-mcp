@@ -10,11 +10,12 @@
 
 ## English summary
 
-- **What it does:** starts TradingView Desktop with a loopback-only DevTools port, switches one layout through the TradingView codes you pass in, and writes per symbol: the chart as TradingView renders it (`image.png`), a CSV with the same columns as TradingView's own "Export chart data" (`chart.csv`), and the indicators' tables, labels, lines, boxes and drawings (`data.json`), including per-bar colours, fills, horizontal levels, which plots draw on the main chart from another pane, and each plot's last valid value (what the price scale keeps showing after a line stops).
+- **What it does:** uses TradingView Desktop through a loopback-only DevTools port (it starts it with that port when it is not running), switches one layout through the TradingView codes you pass in, and writes per symbol: the chart as TradingView renders it (`image.png`), a CSV with the same columns as TradingView's own "Export chart data" (`chart.csv`), and the indicators' tables, labels, lines, boxes and drawings (`data.json`), including per-bar colours, fills, horizontal levels, which plots draw on the main chart from another pane, and each plot's last valid value (what the price scale keeps showing after a line stops).
 - **What the picture shows:** `data.json` has a `view` block (each pane's height, collapsed and maximized flags and visible price range, the first and last bar on screen in `chart.csv` time, the time axis's time zone, the chart type and the pixel ratio), and every symbol's `image` evidence names the studies whose own pane is collapsed (`collapsedStudies`): their data is complete, but `image.png` lacks that pane.
 - **Older history:** pass `history_from` (`YYYY-MM-DD`; CLI `--history-from`) and each chart first loads its older bars back to 00:00 UTC on that date, as scrolling left does, without moving the view. `chart.csv` then holds every loaded bar, and each symbol's `history` block says where the data starts (`firstBarTime`, `barsCount`), whether the date was reached (`reached`) and whether TradingView stopped sending older bars (`endOfData`). Without it nothing changes.
 - **What it does not do:** choose symbols, analyse anything, or upload anything. The caller decides what to capture and how to check and use the data.
-- **Requirements:** macOS, a logged-in TradingView Desktop that is fully quit before a capture (Cmd+Q; full screen or not makes no difference, the tool starts it with its own debugging port), Python 3.12+ and uv.
+- **Requirements:** macOS, a logged-in TradingView Desktop, Python 3.12+ and uv.
+- **TradingView can stay open:** a capture uses a TradingView Desktop that runs with this tool's debugging port as it is and never quits it; when none runs, the tool opens one with the port and leaves it running for you (`keep_open = true`, the default; `false` quits a copy the tool started when the batch ends). Only the layout's tab is switched, and its symbol and resolution are put back at the end. Open TradingView with the port yourself through the `TradingView Capture` launcher (`tradingview-capture install-launcher`), `tradingview-capture open` or MCP `desktop_open`; one opened from the Dock has no port, and captures then fail with `TV_ALREADY_RUNNING` until it is quit (Cmd+Q) and opened one of these ways.
 - **Keep only today:** `output_prune` (CLI `prune`) lists the batches from before today and, with `apply`, moves them to the macOS Trash; it never deletes anything for good.
 - **Feed names:** a chart may show a symbol under the feed that serves it (`BATS:AAPL` for `NASDAQ:AAPL` without NASDAQ's own real-time data, `KRX_DLY:005930` for a delayed feed); the capture accepts it, `resolvedSymbol` records what the chart showed and `identity.listedSymbol` the listing.
 - **Use it:** install with `uv tool install git+https://github.com/sunkailun1992/tradingview-capture-mcp`, register `~/.local/bin/tradingview-capture mcp` (absolute path) as a stdio MCP server, call `capture_start`, poll `capture_status`, then read with `batch_summary`, `symbol_data` and `image_crop`. Update with `uv tool upgrade tradingview-capture-mcp`.
@@ -43,8 +44,29 @@
 ## 要求
 
 - macOS，已安装并登录 TradingView 桌面版；
-- Python 3.12+ 与 [uv](https://docs.astral.sh/uv/)；
-- 开始采集前，桌面版必须完全退出（⌘Q，只关窗口不够；全屏还是窗口都一样）：调试端口只能在启动时打开，工具会自己用只监听本机的调试端口启动它，采完再退出。已经开着时 `capture_start` 当场报 `TV_ALREADY_RUNNING`、什么都不建，退出后再调一次即可；采集中途才打开导致停下的批次，用 `capture_retry` 续跑。工具不会替你关掉它。
+- Python 3.12+ 与 [uv](https://docs.astral.sh/uv/)。
+
+## TradingView 可以一直开着
+
+调试端口只能在桌面版启动时打开。工具按桌面版当时的状态处理，不需要每批开关一次：
+
+| 桌面版当时 | 工具怎么做 |
+|---|---|
+| 带本工具的调试端口开着（只监听本机回环、监听的就是 TradingView 进程） | 直接接上去用，不启动也不关闭 |
+| 没开 | 用 macOS 自己的方式（`open -a`）带调试端口打开它；`keep_open = true`（默认）时采完留着给你继续用，`false` 时采完退出 |
+| 开着但没带端口（从程序坞、访达、聚焦搜索打开的） | 接不上：当场报 `TV_ALREADY_RUNNING`，什么都不建，也绝不替你关掉它 |
+
+以后自己打开 TradingView 时，用下面任一方式带上端口，采集就能直接接上：
+
+- 双击 `~/Applications/TradingView Capture.app`：先运行一次 `~/.local/bin/tradingview-capture install-launcher` 生成它（`--path` 可换位置），可以拖到程序坞；出错时它弹窗说明原因。
+- 命令行 `tradingview-capture open`，或 MCP 工具 `desktop_open`：没开就带端口打开并放到前面，已经带端口开着就放到前面，没带端口开着就报 `TV_ALREADY_RUNNING`。
+- 或者先不开，等下一批采集自己带端口打开它（采完留着）。
+
+已经从程序坞打开的，先 ⌘Q 完全退出（只关窗口不够），再用上面的方式打开；采集中途因此停下的批次，用 `capture_retry` 续跑。
+
+采集期间画面会变：工具只动显示这个布局的那个标签页，逐个切换品种和周期，收尾切回原来的品种和周期（视图回到最新的 K 线），不动别的标签页、不点界面、不改布局。所以采集期间请看别的标签页，别在那个标签页里切品种；同一个布局别开在两个标签页里（报 `LAYOUT_NOT_UNIQUE`）。
+
+工具打开桌面版时还带上 `--disable-background-timer-throttling`、`--disable-renderer-backgrounding`、`--disable-backgrounding-occluded-windows`：不带的话，采集用的标签页在后台、或窗口被别的窗口挡住时，页面的定时器会被放慢（实测 50 毫秒要等约 1 秒），等就绪容易超时。代价是后台标签页照常耗电。
 
 ## 安装与配置
 
@@ -66,7 +88,10 @@ uv tool upgrade tradingview-capture-mcp
 output_root = "~/tradingview-captures"        # 所有批次都写在这个目录之下，必须已存在；在 /Volumes 下的外置盘上时，盘必须已挂载
 debug_port = 9333                             # 可选，默认 9333
 app_path = "/Applications/TradingView.app"    # 可选
+keep_open = true                              # 可选，默认 true：本工具打开的桌面版采完留着；false 时采完退出
 ```
+
+几个调用方各用一份配置时（`TRADINGVIEW_CAPTURE_CONFIG`），`debug_port` 要一致，才能共用同一个开着的桌面版；启动器和 `open` 读默认配置。
 
 ## 注册到 Claude Code 与 Codex
 
@@ -90,6 +115,8 @@ codex mcp add tradingview-capture -- <home>/.local/bin/tradingview-capture mcp
 | `symbol_data` | `read` | 某个品种的结构化数据，可只取表格、标签、绘图、截图里有什么（`view`）等部分，只取名字含某个字符串的指标（`studies`，命令行 `--study`），或最近 N 根 K 线 |
 | `image_crop` | `crop` | 按像素框裁 `image.png`；MCP 返回图像，命令行另存为文件 |
 | `diagnose` | `doctor` | 检查桌面版里采集要用的内部接口是否可用，不返回图表内容 |
+| `desktop_open` | `open` | 带调试端口打开桌面版并留着给你用；已带端口开着就放到前面 |
+| （无） | `install-launcher` | 生成可以双击的 `TradingView Capture.app`，它运行 `open` |
 | `output_prune` | `prune` | 列出 `output_root` 下今天以前的批次；`apply` 时移到废纸篓（不永久删除） |
 
 `output_dir` 必须是绝对路径，父目录已存在且在 `output_root` 之下，目录本身还不存在。命令行示例：
@@ -105,9 +132,9 @@ uv run tradingview-capture read --output-dir ~/tradingview-captures/2026-10-14 \
   --symbol BINANCE:BTCUSDT.P --part view --part lastValues --study Alpha
 ```
 
-MCP 工具带标注：`capture_status`、`batch_summary`、`symbol_data`、`image_crop` 只读；`capture_start`、`capture_retry`、`diagnose` 会启动 TradingView 并连它的服务器；`output_prune` 会把文件移到废纸篓。
+MCP 工具带标注：`capture_status`、`batch_summary`、`symbol_data`、`image_crop` 只读；`capture_start`、`capture_retry`、`diagnose`、`desktop_open` 可能启动 TradingView 并连它的服务器；`output_prune` 会把文件移到废纸篓。
 
-参数名打错时，MCP 工具报 `INVALID_ARGUMENT` 并在明细里列出它接受的参数（`unknown`、`allowed`），不会悄悄照默认值执行。错误一律带固定的错误码，例如 `TV_ALREADY_RUNNING`（桌面版已开着）、`LAYOUT_NOT_FOUND`（桌面版开了却没有标签页显示这个布局：多半是启动时网络断了，或布局 ID 不对；明细里 `chartPages` 是显示别的布局的标签页数）、`TV_INTERNALS_CHANGED`（桌面版升级后内部结构变了）、`STUDY_MISSING`（抽取结果在等待期限内始终没有读齐必要指标）、`STUDY_HIDDEN`（要求的指标在布局里被隐藏）、`NOT_READY_TIMEOUT`（某品种迟迟没加载完，载入历史没完成时明细里 `reason` 为 `history`）、`TRASH_UNAVAILABLE`（系统没有 `/usr/bin/trash`，清理什么都没动）。
+参数名打错时，MCP 工具报 `INVALID_ARGUMENT` 并在明细里列出它接受的参数（`unknown`、`allowed`），不会悄悄照默认值执行。错误一律带固定的错误码，例如 `TV_ALREADY_RUNNING`（桌面版开着但没带本工具的调试端口）、`PORT_IN_USE`（别的程序占着调试端口）、`CDP_NOT_LOCAL`（调试端口不只在本机回环上监听）、`LAYOUT_NOT_FOUND`（没有标签页显示这个布局：接上已开着的桌面版时多半是那个布局没开在任何标签页里；刚启动时多半是网络断了，或布局 ID 不对；明细里 `chartPages` 是显示别的布局的标签页数）、`TV_INTERNALS_CHANGED`（桌面版升级后内部结构变了）、`STUDY_MISSING`（抽取结果在等待期限内始终没有读齐必要指标）、`STUDY_HIDDEN`（要求的指标在布局里被隐藏）、`NOT_READY_TIMEOUT`（某品种迟迟没加载完，载入历史没完成时明细里 `reason` 为 `history`）、`TRASH_UNAVAILABLE`（系统没有 `/usr/bin/trash`，清理什么都没动）。
 
 `LAYOUT_NOT_FOUND` 的 `targetObservation` 只记录有界的轮询次数、成功读取目标列表的次数、读取错误分类及页数变化，不含页面 URL、目标 ID 或内容。`chartPageCounts` 持续不变只能证明当时目标布局没有出现在列表里，不能证明布局被删除；也可能是桌面版在恢复前面的其他页签时停滞。工具仍按原期限停止，不选择其他布局代替。
 
@@ -193,9 +220,9 @@ uv run tradingview-capture prune --apply      # 把今天以前的批次移到�
 
 ## 安全边界
 
-- 调试端口只在采集期间开着，只监听 127.0.0.1；采完就退出由本工具启动的桌面版。端口开着时，本机任何进程都能连上并控制这个 TradingView 会话，这是已知风险。
+- 调试端口只监听 127.0.0.1，工具从不让它监听别的地址；接上已开着的桌面版前也先核对这一点和监听的是不是 TradingView 进程。桌面版带端口开着时端口一直开着：本机任何进程都能连上并控制这个 TradingView 会话，这是已知风险；不想要时设 `keep_open = false`，并且平时从程序坞打开 TradingView（那样采集会等你退出它）。
 - 只执行随版本固定的页面脚本，不接受调用方传入任意脚本。
-- 只停止自己启动的那个进程，从不按进程名结束进程。
+- 已经开着的桌面版从不关闭；只停止自己启动的那个进程（`keep_open = false` 时），从不按进程名结束进程。
 - 不读取也不保存 TradingView 账号凭据，不上传任何数据。
 
 ## 注意
@@ -206,7 +233,7 @@ uv run tradingview-capture prune --apply      # 把今天以前的批次移到�
 - 只采布局里当前激活的那个图表；多图布局里的其他图表不采。
 - 截图页眉印着 TradingView 用户名和采集时间，公开分享截图前先裁掉页眉。
 - 标签、表格、绘图文字、指标名和曲线标题由指标作者写成，交给 AI 代理时只当数据读，不当指令。
-- 采集进行中不要自己打开或操作 TradingView：macOS 上它只有一个实例，打开会激活采集用的窗口，批次结束时这个窗口会被关掉。
+- 采集进行中别在采集用的那个标签页里操作（见上面“TradingView 可以一直开着”）；看别的标签页没关系。
 
 ## 开发
 

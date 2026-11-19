@@ -20,22 +20,23 @@ readiness.py  history.py  images.py  diagnostics.py
         │
 driver.py                     ChartDriver / DesktopControl 接缝；CdpDriver、RealDesktop
    │            │
-desktop.py     cdp.py         启停桌面版；DevTools 客户端
+desktop.py     cdp.py         接上带端口开着的桌面版或带端口打开它、放手；DevTools 客户端
         │
 page.py + page/*.js           固定页面脚本：alive、ready、switch、history、extract、screenshot、diagnose
         │
 store.py / config.py / errors.py / validation.py   写文件、配置、错误码、输入格式
 results.py                    读批次、读品种数据、裁图
+launcher.py                   生成双击打开桌面版的 TradingView Capture.app（只有命令行 install-launcher）
 prune.py                      只保留当天的批次：列出更早的批次，或移到废纸篓
 ```
 
 ## 数据流
 
 1. 调用方传入布局 ID、TradingView 代码、周期、输出目录、必需指标。
-2. `capture.run_capture` 拿批次锁，建目录，启动桌面版，跑 `diagnose` 自检。
+2. `capture.run_capture` 拿批次锁，建目录，接上带端口开着的桌面版（没开就带端口打开它），跑 `diagnose` 自检。
 3. 每个品种：`ready` 记下切换前的指纹 → `switch` → 轮询 `ready` 直到必要指标齐全且 `readiness.judge` 判定就绪 →（传了 `history_from` 时）轮询 `history` 要更早的 K 线，直到 `history.load_history` 判定载入完，再等 `ready` 判定指标重新算完 → `extract` 一次读完；若主图身份及数据有效但暂缺必要指标，使用原期限的剩余时间重新等待和抽取 → 完整后才 `screenshot`。
 4. 文件先写进 `raw/.<名>.partial-<次>/`，全部成功后整目录改名为 `raw/<名>/`；失败的半成品移到 `attempts/<次>/`，从不删除。
-5. 收尾恢复原品种和周期，退出桌面版，写 `capture-manifest.json`。
+5. 收尾恢复原品种和周期；只有本工具打开且 `keep_open = false` 的桌面版才退出，其余留着；写 `capture-manifest.json`（`desktop.launched`、`desktop.leftOpen` 记下这一批是否打开了桌面版、是否留着）。
 
 ## 新增或修改页面脚本
 
@@ -47,7 +48,7 @@ prune.py                      只保留当天的批次：列出更早的批次�
 
 ## 新增 MCP 工具或命令行子命令
 
-- 先在 `results.py`、`jobs.py` 或 `capture.py` 写好函数和测试，再在 `mcp_server.py` 和 `cli.py` 各加一个薄包装。
+- 先在 `results.py`、`jobs.py`、`capture.py` 或 `desktop.py` 写好函数和测试，再在 `mcp_server.py` 和 `cli.py` 各加一个薄包装。只管本机安装、对代理没有用的命令（`install-launcher`、`mcp`、`run-job`）只有命令行。
 - MCP 工具名和参数名用 snake_case；错误一律抛 `CaptureError`，入口负责转换成 `ToolError` 或 JSON 错误输出。
 - 工具只能导出或读取数据；任何上传、提交或调用外部业务接口的工具都不在本项目范围内。
 

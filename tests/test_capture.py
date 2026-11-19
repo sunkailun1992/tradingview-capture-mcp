@@ -445,9 +445,29 @@ def test_a_failed_start_still_leaves_a_manifest(config):
     )
     out = config.output_root / "batch"
     assert (summary["state"], summary["error"]["code"]) == ("stopped", "TV_ALREADY_RUNNING")
-    assert read_json(out / "capture-manifest.json")["desktop"]["version"] is None
+    assert read_json(out / "capture-manifest.json")["desktop"] == {
+        "version": None,
+        "browser": None,
+        "previousVersion": None,
+        "launched": None,
+        "leftOpen": None,
+    }
     assert read_json(out / "job.json")["state"] == "failed"
     assert desktop.stopped == 1
+
+
+@pytest.mark.parametrize("launched, left_open", [(False, True), (True, True), (True, False)])
+def test_the_manifest_says_whether_the_batch_started_tradingview_and_left_it_open(
+    config, launched, left_open
+):
+    capture(config, make_request(config), launched=launched, left_open=left_open)
+    assert read_json(config.output_root / "batch" / "capture-manifest.json")["desktop"] == {
+        "version": "3.4.1",
+        "browser": "Chrome/146.0.7680.216",
+        "previousVersion": None,
+        "launched": launched,
+        "leftOpen": left_open,
+    }
 
 
 def test_a_batch_stopped_by_an_open_desktop_is_finished_by_a_retry(config):

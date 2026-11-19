@@ -5,7 +5,7 @@ import time
 
 import pytest
 
-from tradingview_capture_mcp import jobs
+from tradingview_capture_mcp import desktop, jobs
 from tradingview_capture_mcp.capture import CaptureRequest
 from tradingview_capture_mcp.config import Config
 from tradingview_capture_mcp.errors import CaptureError
@@ -22,7 +22,8 @@ def config(tmp_path):
 @pytest.fixture(autouse=True)
 def tradingview_closed(monkeypatch):
     """Keep the tests independent of whether TradingView happens to be open on this machine."""
-    monkeypatch.setattr(jobs, "running_pids", lambda: [])
+    monkeypatch.setattr(desktop, "running_pids", lambda process_name="TradingView": [])
+    monkeypatch.setattr(desktop, "listeners", lambda port: [])
 
 
 @pytest.fixture
@@ -72,14 +73,21 @@ def test_start_refuses_an_existing_batch_and_a_held_lock(config, stub_python):
     assert err.value.code == "BATCH_LOCKED"
 
 
-def test_start_fails_at_once_while_tradingview_is_open(config, stub_python, monkeypatch):
-    monkeypatch.setattr(jobs, "running_pids", lambda: [4242])
+def test_start_fails_at_once_while_tradingview_is_open_without_the_port(config, stub_python, monkeypatch):
+    monkeypatch.setattr(desktop, "running_pids", lambda process_name="TradingView": [4242])
     with pytest.raises(CaptureError) as err:
         jobs.start(config, request(config), python=stub_python)
-    assert (err.value.code, err.value.detail) == ("TV_ALREADY_RUNNING", {"pids": [4242]})
+    assert (err.value.code, err.value.detail) == ("TV_ALREADY_RUNNING", {"pids": [4242], "port": 9333})
     # Nothing was created, so the same capture_start works once TradingView is quit.
     assert not (config.output_root / "batch").exists()
     assert not list(config.output_root.glob(f"{jobs.JOBS_DIR}/*"))
+
+
+def test_start_goes_ahead_while_tradingview_is_open_with_the_port(config, stub_python, monkeypatch):
+    monkeypatch.setattr(desktop, "running_pids", lambda process_name="TradingView": [4242])
+    monkeypatch.setattr(desktop, "listeners", lambda port: [(4242, "127.0.0.1")])
+    started = jobs.start(config, request(config), python=stub_python)
+    assert (config.output_root / jobs.JOBS_DIR / f"{started['jobId']}.request.json").is_file()
 
 
 def test_status_by_output_dir_reads_job_json(config):

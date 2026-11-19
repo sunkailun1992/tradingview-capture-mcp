@@ -2,6 +2,34 @@
 
 本文件记录每个版本的变化，以及验证过的 TradingView 桌面版版本。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号用[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## 0.5.0 — 2026-11-19
+
+TradingView 桌面版可以一直开着给用户看图，采集照样能跑，不再每批开关一次。
+
+### 新增
+
+- 接上已开着的桌面版：它带着本工具的调试端口（只监听本机回环、监听的就是 TradingView 进程）时，采集和 `doctor` / `diagnose` 直接用它，不启动也不关闭。
+- 没开时用 macOS 自己的方式（`/usr/bin/open -a`）带调试端口打开它，采完留着给用户继续用。新配置项 `keep_open`：默认 `true`；设成 `false` 恢复以前的做法，本工具启动的桌面版采完退出。只写 `app_path`、`debug_port`、`output_root` 的旧配置照常可用，得到新的默认值。
+- 命令行 `open`、MCP 工具 `desktop_open`：带端口打开桌面版并放到前面；已经带端口开着就放到前面；没带端口开着报 `TV_ALREADY_RUNNING`。
+- 命令行 `install-launcher`：生成可以双击、可以拖进程序坞的 `~/Applications/TradingView Capture.app`（`--path` 可换位置），它运行 `tradingview-capture open`，出错时弹窗说明原因；已有同名文件时报 `OUTPUT_EXISTS`，不覆盖。
+- 本工具打开桌面版时带上 `--disable-background-timer-throttling`、`--disable-renderer-backgrounding`、`--disable-backgrounding-occluded-windows`。2026-11-19 在桌面版 3.4.1 上实测：不带时，后台标签页里 50 毫秒的定时器要等约 1 秒；带上后后台标签页隐藏超过 5 分钟，连续的 20 毫秒定时器仍是 20 毫秒左右。用户看别的标签页、或窗口被挡住时，采集用的标签页因此不再被放慢。
+- `capture-manifest.json` 的 `desktop` 块多两个字段：`launched`（这一批是否打开了桌面版）、`leftOpen`（采完是否留着）；桌面版没起来时都是 `null`。其余字段与 `schemaVersion` 不变。
+
+### 变化
+
+- `TV_ALREADY_RUNNING` 的固定码不变，含义收窄为"桌面版开着，但没带本工具的调试端口"（从程序坞、访达、聚焦搜索打开的）；带端口开着不再报错。消息写明用启动器、`open` 或 `desktop_open` 重新打开；明细多了 `port`。把它当作"占用、稍后重试"的调用方不用改。
+- `capture_start` / `capture_retry` 的预检在建批次之前也报出 `PORT_IN_USE`（桌面版没开、端口被别的程序占着）和 `CDP_NOT_LOCAL`（端口不只在本机回环上）；以前这两种要等后台任务建好批次才报。
+- `LAYOUT_NOT_FOUND` 的消息加了一句：桌面版本来就开着时，请用户在某个标签页里打开这个布局。
+- 采集期间画面会变：仍只动显示这个布局的那个标签页，逐个切换品种和周期，收尾切回原来的品种和周期（视图回到最新的 K 线）。探查结果：CDP `Target.createTarget` 在桌面版里返回 `Not supported`，没法给采集单开窗口；桌面版自己的标签页只能点界面打开，不在本工具允许的动作之内。
+- 没有新增或改名的错误码；命令行与 MCP 原有参数、输出文件结构保持兼容。
+
+### 验证范围
+
+- 编造的假桌面版与假 `/usr/bin/open` 覆盖三种状态（带端口开着、不带端口开着、没开）、`keep_open` 两种取值、端口被别的程序占着、端口不在本机回环上（用户的不停、刚打开的停掉）、启动超时与启动期间用户自己打开；启动器在 macOS 上真编译、真运行，路径里带空格和引号。
+- 活体（维护者本机，桌面版 3.4.1，日线，1 个品种，5 个必需指标）：
+  - 桌面版带端口开着：接上去采成功，整批 37.5 秒，就绪等待 15 秒；清单 `launched=false`、`leftOpen=true`，采完还是同一个桌面版进程。
+  - 桌面版关着：这一批经 `open` 带端口和三个开关启动它（父进程是 launchd），采完留着（`launched=true`、`leftOpen=true`）；但它刚启动、指标还没算完，这个品种 60 秒内没稳定下来（`NOT_READY_TIMEOUT`，`unstable`），整批 193 秒。当时桌面版正在后台下载更新，网络约 100 KB/s。所以关着时第一批可能丢品种，之后的批次接上已开着的桌面版就快了。
+
 ## 0.4.4 — 2026-11-05
 
 ### 修复

@@ -16,6 +16,8 @@ from .errors import CDP_ERROR, TV_INTERNALS_CHANGED, CaptureError
 class DesktopInfo:
     version: str
     browser: str
+    launched: bool = False  # this batch started TradingView Desktop; otherwise it was already open
+    left_open: bool = True  # TradingView Desktop keeps running when the batch ends
 
 
 class ChartDriver(Protocol):
@@ -38,7 +40,7 @@ class CdpDriver:
         return self._session.evaluate(page.build(script, args), timeout=timeout)
 
 
-# Desktops started by this process, so a termination signal can stop them from any thread.
+# Desktops in use by this process, so a termination signal can let go of them from any thread.
 _ACTIVE: set[Any] = set()
 
 
@@ -49,7 +51,8 @@ def stop_all_desktops() -> None:
 
 
 class RealDesktop:
-    """Starts the installed TradingView Desktop and connects to one layout's tab."""
+    """Uses the TradingView Desktop that runs with the debugging port, or starts it, and connects to one
+    layout's tab. It quits TradingView only when it started it and the config says not to keep it open."""
 
     def __init__(self, config: Config, layout: str, *, page_timeout: float = 60.0) -> None:
         self._config = config
@@ -59,7 +62,7 @@ class RealDesktop:
         self._cdp: cdp.CdpSession | None = None
 
     def start(self) -> tuple[DesktopInfo, ChartDriver]:
-        self._session = desktop.launch(self._config)
+        self._session = session = desktop.connect_or_launch(self._config)
         _ACTIVE.add(self)
         target = desktop.wait_for_chart_page(
             self._config.debug_port, self._layout, timeout=self._page_timeout
@@ -67,7 +70,13 @@ class RealDesktop:
         self._cdp = cdp.CdpSession(target["webSocketDebuggerUrl"])
         driver = CdpDriver(self._cdp)
         _wait_for_chart_api(driver, self._page_timeout)
-        return DesktopInfo(version=self._session.version, browser=self._session.browser), driver
+        info = DesktopInfo(
+            version=session.version,
+            browser=session.browser,
+            launched=session.launched,
+            left_open=session.process is None,
+        )
+        return info, driver
 
     def stop(self) -> None:
         if self._cdp is not None:
@@ -75,8 +84,8 @@ class RealDesktop:
                 self._cdp.close()
             self._cdp = None
         if self._session is not None:
-            desktop.stop_process(self._session.process)
-            self._session = None
+            session, self._session = self._session, None
+            desktop.release(session)
         _ACTIVE.discard(self)
 
 

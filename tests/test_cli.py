@@ -3,7 +3,7 @@ import json
 import pytest
 from helpers import make_batch, write_config
 
-from tradingview_capture_mcp import jobs
+from tradingview_capture_mcp import desktop, jobs, launcher
 from tradingview_capture_mcp.cli import main
 
 SYMBOL = "BINANCE:AAAUSDT.P"
@@ -96,3 +96,36 @@ def test_capture_takes_history_from(root, capsys, monkeypatch):
     run(capsys, *argv, "--timeframe", "60", "--history-from", "2019-01-02")
     run(capsys, *argv)
     assert [(r.timeframe, r.history_from) for r in seen] == [("60", "2019-01-02"), ("1D", None)]
+
+
+def test_open_starts_or_shows_tradingview_for_the_user(root, capsys, monkeypatch):
+    seen = []
+    report = {"state": "started", "port": 9333, "pid": 77, "version": "9.9.9"}
+    monkeypatch.setattr(desktop, "open_for_user", lambda config: seen.append(config.debug_port) or report)
+    code, payload = run(capsys, "open")
+    assert (code, payload, seen) == (0, report, [9333])
+
+
+def test_open_reports_a_copy_without_the_port_as_an_error(root, capsys, monkeypatch):
+    def refuse(config):
+        raise desktop.already_running([4242], config.debug_port)
+
+    monkeypatch.setattr(desktop, "open_for_user", refuse)
+    code, payload = run(capsys, "open")
+    assert (code, payload["error"]["code"]) == (2, "TV_ALREADY_RUNNING")
+
+
+def test_install_launcher_makes_an_app_that_runs_the_program_that_made_it(
+    root, tmp_path, capsys, monkeypatch
+):
+    seen = []
+    monkeypatch.setattr(launcher, "install", lambda target, command: seen.append((target, command)) or {})
+    monkeypatch.setattr("sys.argv", [str(tmp_path / "bin" / "tradingview-capture"), "install-launcher"])
+    assert run(capsys, "install-launcher")[0] == 0
+    run(
+        capsys, "install-launcher", "--path", str(tmp_path / "Open TV.app"), "--command", str(tmp_path / "tc")
+    )
+    assert seen == [
+        (launcher.DEFAULT_PATH, tmp_path / "bin" / "tradingview-capture"),
+        (tmp_path / "Open TV.app", tmp_path / "tc"),
+    ]

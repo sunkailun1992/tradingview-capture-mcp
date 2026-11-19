@@ -334,6 +334,9 @@ def run_capture(
                 "version": info.version if info else None,
                 "browser": info.browser if info else None,
                 "previousVersion": previous_version,
+                # Did this batch start TradingView Desktop, and is it left running for the user?
+                "launched": info.launched if info else None,
+                "leftOpen": info.left_open if info else None,
             },
             "desktopVersionChanged": changed,
             "startup": startup,

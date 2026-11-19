@@ -284,10 +284,12 @@ class FakeChart:
 
 
 class FakeDesktop:
-    def __init__(self, chart, *, version="3.4.1", fail=None):
+    def __init__(self, chart, *, version="3.4.1", fail=None, launched=False, left_open=True):
         self.chart = chart
         self.version = version
         self.fail = fail
+        self.launched = launched  # this batch started TradingView (it was not open)
+        self.left_open = left_open  # TradingView stays open when the batch ends
         self.started = 0
         self.stopped = 0
 
@@ -295,7 +297,13 @@ class FakeDesktop:
         self.started += 1
         if self.fail:
             raise self.fail
-        return DesktopInfo(version=self.version, browser="Chrome/146.0.7680.216"), self.chart
+        info = DesktopInfo(
+            version=self.version,
+            browser="Chrome/146.0.7680.216",
+            launched=self.launched,
+            left_open=self.left_open,
+        )
+        return info, self.chart
 
     def stop(self):
         self.stopped += 1
